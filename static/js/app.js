@@ -1,31 +1,32 @@
-/* UniPulse v3 — 前端交互逻辑 (优化版) */
+/* UniPulse — 高考志愿填报神器 · 前端逻辑 */
 const API = '/api';
 let sessionId = localStorage.getItem('unipulse_session') || (() => {
-  const id = 'sess_' + Math.random().toString(36).slice(2, 10);
+  const id = 'sess_' + Math.random().toString(36).slice(2,10);
   localStorage.setItem('unipulse_session', id);
   return id;
 })();
-
-// ── 路由 ──
 let currentPage = 'home';
 let currentUniPage = 1;
 let currentForumPage = 1;
+let userScore = parseInt(localStorage.getItem('unipulse_score')) || 0;
+let compareList = JSON.parse(localStorage.getItem('unipulse_compare') || '[]');
 
+// ── 路由 ──
 function navigate(page, params = {}) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => { p.classList.remove('active'); p.classList.add('hidden'); });
   document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
-  const pageEl = document.getElementById('page-' + page);
-  if (pageEl) pageEl.classList.add('active');
-  const navLink = document.querySelector(`.nav-link[data-page="${page}"]`);
-  if (navLink) navLink.classList.add('active');
+  const el = document.getElementById('page-' + page);
+  if (el) { el.classList.add('active'); el.classList.remove('hidden'); }
+  const nav = document.querySelector(`.nav-link[data-page="${page}"]`);
+  if (nav) nav.classList.add('active');
   currentPage = page;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-
+  window.scrollTo({top:0,behavior:'smooth'});
   if (page === 'home') loadHome();
   else if (page === 'universities') loadUniversities(1);
   else if (page === 'uni-detail') loadUniDetail(params.id);
   else if (page === 'programs') loadProgramsFull();
   else if (page === 'program-detail') loadProgramDetail(params.name);
+  else if (page === 'compare') loadCompare();
   else if (page === 'forum') loadForum(1);
   else if (page === 'post-detail') loadPostDetail(params.id);
   else if (page === 'favorites') loadFavorites();
@@ -34,756 +35,631 @@ function navigate(page, params = {}) {
 
 document.addEventListener('click', e => {
   const link = e.target.closest('[data-page]');
-  if (link) {
-    e.preventDefault();
-    const page = link.dataset.page;
-    const id = link.dataset.id;
-    const name = link.dataset.name;
-    navigate(page, { id, name });
-  }
-  const closeBtn = e.target.closest('.close-btn');
-  if (closeBtn) closeBtn.closest('.modal').remove();
+  if (link) { e.preventDefault(); navigate(link.dataset.page, {id:link.dataset.id, name:link.dataset.name}); }
 });
 
 // ── API ──
 async function apiGet(path) {
   const r = await fetch(API + path);
-  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+async function apiPost(path, body) {
+  const r = await fetch(API + path, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
 
-// ── Toast ──
-function showToast(msg, type = 'success') {
+// ── 工具 ──
+function toast(msg) {
   const c = document.getElementById('toastContainer');
   const t = document.createElement('div');
-  t.className = `toast toast-${type}`;
-  t.textContent = msg;
+  t.className = 'toast'; t.textContent = msg;
   c.appendChild(t);
-  setTimeout(() => t.remove(), 3200);
+  setTimeout(() => t.remove(), 3000);
 }
-
-// ── 工具 ──
-function tagClass(type) {
-  const map = { gold:'tag-gold', blue:'tag-blue', red:'tag-red', green:'tag-green', purple:'tag-purple', cyan:'tag-cyan', orange:'tag-orange', pink:'tag-pink' };
-  return map[type] || 'tag-blue';
+function $(id) { return document.getElementById(id); }
+function getLevelClass(level) {
+  if (level.includes('985')) return 'level-985';
+  if (level.includes('211')) return 'level-211';
+  if (level.includes('双一流')) return 'level-dy';
+  return 'level-other';
 }
-
-function salaryClass(salary) {
-  if (salary >= 20000) return 'salary-high';
-  if (salary >= 14000) return 'salary-mid';
-  return 'salary-low';
+function getChanceInfo(gap) {
+  if (gap >= 20) return {text:'较稳', cls:'chance-wen', group:'稳'};
+  if (gap >= 0) return {text:'可冲', cls:'chance-chong', group:'冲'};
+  if (gap >= -20) return {text:'保底', cls:'chance-bao', group:'保'};
+  return {text:'差距大', cls:'chance-none', group:''};
 }
-
-function salaryLabel(salary) {
-  if (!salary) return '—';
-  return (salary >= 1000 ? '¥' + (salary / 1000).toFixed(1) + 'k' : salary + '¥') + '/月';
-}
-
-function fmtNumber(n) {
-  if (!n) return '—';
-  if (n >= 10000) return (n / 10000).toFixed(1) + 'w';
-  return n.toLocaleString();
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function relativeTime(ts) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  const now = new Date();
-  const diff = Math.floor((now - d) / 1000);
-  if (diff < 60) return '刚刚';
-  if (diff < 3600) return Math.floor(diff / 60) + '分钟前';
-  if (diff < 86400) return Math.floor(diff / 3600) + '小时前';
-  if (diff < 86400 * 7) return Math.floor(diff / 86400) + '天前';
-  return d.toLocaleDateString('zh-CN');
-}
-
-function toggleFav(uniId, btn) {
-  const favs = JSON.parse(localStorage.getItem('unipulse_favs') || '[]');
-  const idx = favs.indexOf(uniId);
-  if (idx >= 0) {
-    favs.splice(idx, 1);
-    btn.textContent = '⭐ 收藏';
-    btn.classList.remove('btn-primary');
-    btn.classList.add('btn-ghost');
-    showToast('已取消收藏');
-  } else {
-    favs.push(uniId);
-    btn.textContent = '⭐ 已收藏';
-    btn.classList.add('btn-primary');
-    btn.classList.remove('btn-ghost');
-    showToast('已收藏高校');
-  }
-  localStorage.setItem('unipulse_favs', JSON.stringify(favs));
-}
-
-function isFaved(uniId) {
-  return JSON.parse(localStorage.getItem('unipulse_favs') || '[]').includes(uniId);
-}
-
-// ── 骨架屏 ──
-function skeletonUniCard() {
-  return `<div class="uni-card">
-    <div class="uni-card-top">
-      <div class="skeleton" style="width:46px;height:46px;border-radius:10px"></div>
-      <div style="flex:1">
-        <div class="skeleton" style="width:60%;height:14px;margin-bottom:6px"></div>
-        <div class="skeleton" style="width:40%;height:11px"></div>
-      </div>
-      <div class="skeleton" style="width:36px;height:20px;border-radius:999px"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;padding:0.8rem 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
-      <div class="skeleton" style="height:28px;border-radius:6px"></div>
-      <div class="skeleton" style="height:28px;border-radius:6px"></div>
-      <div class="skeleton" style="height:28px;border-radius:6px"></div>
-    </div>
-    <div style="display:flex;gap:0.3rem;margin-top:0.5rem">
-      <div class="skeleton" style="width:48px;height:18px;border-radius:999px"></div>
-      <div class="skeleton" style="width:60px;height:18px;border-radius:999px"></div>
-    </div>
-  </div>`;
-}
-
-function animateValue(el, target, duration = 1200) {
-  const start = 0;
-  const startTime = performance.now();
-  function update(now) {
-    const elapsed = now - startTime;
-    const progress = Math.min(elapsed / duration, 1);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    const current = Math.round(start + (target - start) * eased);
-    el.textContent = typeof target === 'string' ? target : current.toLocaleString();
-    if (progress < 1) requestAnimationFrame(update);
-  }
-  requestAnimationFrame(update);
-}
-
-// ── 通用卡片渲染 ──
-function renderUniCard(u) {
-  const stars = u.stars || 4;
-  const starsHtml = '★'.repeat(Math.floor(stars)) + '☆'.repeat(5 - Math.floor(stars));
-  const tagsHtml = (u.tags || []).slice(0, 3).map(t => `<span class="tag ${tagClass(t.type || 'blue')}">${escapeHtml(t.text)}</span>`).join('');
-  const favBtn = isFaved(u.id) ? '⭐ 已收藏' : '⭐ 收藏';
-  const favClass = isFaved(u.id) ? 'btn-primary' : 'btn-ghost';
-  return `
-    <div class="uni-card" data-page="uni-detail" data-id="${u.id}">
-      <div class="uni-card-top">
-        <div class="uni-logo" style="background:${escapeHtml(u.logo || '#3b82f6')}">${escapeHtml(u.initials || u.cn?.charAt(0) || 'U')}</div>
-        <div class="uni-name-group">
-          <div class="uni-cn">${escapeHtml(u.cn)}</div>
-          <div class="uni-loc">📍 ${escapeHtml(u.loc)} · ${escapeHtml(u.type)}</div>
-        </div>
-        <span class="uni-rank-badge">#${u.rank}</span>
-      </div>
-      <div class="uni-metrics">
-        <div class="uni-metric"><div class="uni-metric-val">${u.gaokao_score ? u.gaokao_score + '分' : '—'}</div><div class="uni-metric-label">高考分数线</div></div>
-        <div class="uni-metric"><div class="uni-metric-val">${u.avg_salary ? '¥' + (u.avg_salary / 1000).toFixed(1) + 'k' : '—'}</div><div class="uni-metric-label">平均月薪</div></div>
-        <div class="uni-metric"><div class="uni-metric-val">${u.employment_rate ? u.employment_rate + '%' : '—'}</div><div class="uni-metric-label">就业率</div></div>
-      </div>
-      <div class="uni-tags">${tagsHtml}</div>
-      <div class="uni-card-actions">
-        <button class="btn btn-primary btn-sm" data-page="uni-detail" data-id="${u.id}">查看详情 →</button>
-        <button class="btn ${favClass} btn-sm fav-btn" data-uni="${u.id}">${favBtn}</button>
-      </div>
-    </div>`;
+function formatSalary(v) { return v >= 10000 ? (v/1000).toFixed(0)+'K' : v; }
+function tagType(t) {
+  const map = {'985':'gold','211':'blue','双一流':'cyan','985/211':'gold','独立学院':'orange','省属重点':'green','外语顶尖':'purple','传媒顶尖':'red','法学顶尖':'gold','药学顶尖':'red','电子信息':'cyan','两电一邮':'blue','外交官摇篮':'gold','经贸顶尖':'gold','政法黄埔':'red','外语':'purple','师范':'cyan','医学':'red','财经':'purple','建筑':'orange','农林':'green','理工':'blue','综合':'cyan'};
+  for (const [k,v] of Object.entries(map)) { if (t.includes(k)) return v; }
+  return 'blue';
 }
 
 // ── 首页 ──
 async function loadHome() {
-  // 骨架屏
-  document.getElementById('heroStats').innerHTML = Array(4).fill('<div class="stat-pill skeleton" style="width:90px;height:32px"></div>').join('');
-  document.getElementById('hotUnis').innerHTML = Array(6).fill(skeletonUniCard()).join('');
-  document.getElementById('programGrid').innerHTML = Array(8).fill('<div class="program-card skeleton" style="height:100px"></div>').join('');
-  document.getElementById('forumPreview').innerHTML = Array(3).fill('<div class="skeleton" style="height:80px;border-radius:14px;margin-bottom:0.8rem"></div>').join('');
+  loadHotUnis();
+  loadPrograms();
+  loadForumPreview();
+  loadScoreDistribution();
+  loadHeroStats();
+}
 
+async function loadHeroStats() {
   try {
-    const [stats, hot, progs, posts] = await Promise.all([
-      apiGet('/stats'),
-      apiGet('/universities?sort=rank&order=asc&limit=6'),
-      apiGet('/programs'),
-      apiGet('/forum/posts?sort=hot&limit=5')
-    ]);
-
-    // Stats 动画
-    const statsEl = document.getElementById('heroStats');
-    statsEl.innerHTML = '';
-    const statData = [
-      { icon:'🏫', val: stats.universities, suffix:' 所高校', label:`${stats.universities} 所高校` },
-      { icon:'💼', val: stats.employment_records, suffix:' 条就业数据', label:`${stats.employment_records} 条就业数据` },
-      { icon:'📈', val: stats.avg_salary, prefix:'¥', suffix:'k 均薪', label:`¥${(stats.avg_salary/1000).toFixed(1)}k 均薪` },
-      { icon:'📖', val: stats.avg_employment_rate, suffix:'% 就业率', label:`${stats.avg_employment_rate}% 就业率` },
-    ];
-
-    // 延迟渲染每个 stat pill 并动画
-    statData.forEach((s, i) => {
-      setTimeout(() => {
-        const pill = document.createElement('div');
-        pill.className = 'stat-pill';
-        pill.textContent = s.label;
-        pill.style.opacity = '0';
-        pill.style.transform = 'translateY(10px)';
-        statsEl.appendChild(pill);
-        requestAnimationFrame(() => {
-          pill.style.transition = 'all 0.4s ease';
-          pill.style.opacity = '1';
-          pill.style.transform = 'translateY(0)';
-        });
-      }, i * 120);
-    });
-
-    // 高校动画
-    const hotGrid = document.getElementById('hotUnis');
-    hotGrid.innerHTML = (hot.data || []).map(renderUniCard).join('');
-    animateCards(hotGrid);
-
-    // 专业
-    document.getElementById('programGrid').innerHTML = (progs || []).slice(0, 10).map((p, i) => `
-      <div class="program-card" data-page="program-detail" data-name="${escapeHtml(p.name)}" style="animation:cardFade 0.4s ease ${i*60}ms both">
-        <div class="program-icon">${escapeHtml(p.icon || '📚')}</div>
-        <div class="program-name">${escapeHtml(p.name)}</div>
-        <div class="program-count">${p.count} 所高校</div>
-      </div>`).join('');
-
-    // 论坛预览
-    document.getElementById('forumPreview').innerHTML = (posts.data || []).map(p => `
-      <div class="forum-post-card" data-page="post-detail" data-id="${p.id}">
-        <div class="forum-post-title">${escapeHtml(p.title)}</div>
-        <div class="forum-post-meta">
-          <span>👤 ${escapeHtml(p.author)}</span>
-          <span>🏷️ ${escapeHtml(p.category)}</span>
-          <span>👁️ ${p.views}</span>
-          <span>❤️ ${p.likes}</span>
-        </div>
-      </div>`).join('');
-    attachFavBtns();
-  } catch(e) {
-    console.error(e);
-    document.getElementById('hotUnis').innerHTML = '<p style="color:var(--red);text-align:center;padding:2rem">加载失败，请刷新重试</p>';
-  }
+    const s = await apiGet('/stats');
+    $('heroStats').innerHTML = `
+      <div class="stat-pill">🏫 <strong>${s.universities}</strong>所高校</div>
+      <div class="stat-pill">💼 <strong>${s.employment_records}</strong>条就业数据</div>
+      <div class="stat-pill">💰 平均起薪 <strong>${(s.avg_salary/1000).toFixed(0)}K</strong></div>
+      <div class="stat-pill">📊 平均就业率 <strong>${s.avg_employment_rate}%</strong></div>
+      <div class="stat-pill">985 <strong>${s.levels['985']}</strong>所 · 211 <strong>${s.levels['211']}</strong>所</div>
+    `;
+  } catch(e) {}
 }
 
-function animateCards(container) {
-  const cards = container.querySelectorAll('.uni-card');
-  cards.forEach((card, i) => {
-    card.style.opacity = '0';
-    card.style.transform = 'translateY(20px)';
-    setTimeout(() => {
-      card.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
-      card.style.opacity = '1';
-      card.style.transform = 'translateY(0)';
-    }, i * 80);
-  });
+async function loadScoreDistribution() {
+  try {
+    const data = await apiGet('/score-distribution');
+    const maxCount = Math.max(...data.map(d => d.count), 1);
+    $('scoreDistChart').innerHTML = data.map(d => {
+      const h = Math.max((d.count / maxCount) * 140, 4);
+      const isMine = userScore && parseInt(d.range.split('-')[0]) <= userScore && parseInt(d.range.split('-')[1]) >= userScore;
+      return `<div class="score-dist-bar" onclick="navigate('universities');$('scoreSlider').value=${parseInt(d.range.split('-')[0])};$('scoreDisplay').textContent='${d.range.split('-')[0]}分';filterByScore(${parseInt(d.range.split('-')[0])})">
+        <div class="bar-count">${d.count}</div>
+        <div class="bar" style="height:${h}px;${isMine?'background:linear-gradient(180deg,var(--green),rgba(0,214,143,0.3));box-shadow:0 0 12px rgba(0,214,143,0.3)':''}"></div>
+        <div class="bar-label">${d.range}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {}
 }
+
+async function loadHotUnis() {
+  try {
+    const r = await apiGet('/universities?sort=rank&order=asc&limit=8');
+    $('hotUnis').innerHTML = r.data.map(u => renderUniCard(u)).join('');
+  } catch(e) {}
+}
+
+async function loadPrograms() {
+  try {
+    const p = await apiGet('/programs');
+    const html = p.slice(0,8).map(pr => `
+      <div class="program-card" data-page="program-detail" data-name="${encodeURIComponent(pr.name)}">
+        <div class="prog-icon">${pr.icon}</div>
+        <div class="prog-name">${pr.name}</div>
+        <div class="prog-count">${pr.count}所高校</div>
+      </div>`).join('');
+    $('programGrid').innerHTML = html;
+  } catch(e) {}
+}
+
+async function loadForumPreview() {
+  try {
+    const r = await apiGet('/forum/posts?sort=hot&limit=3');
+    $('forumPreview').innerHTML = r.data.map(p => `
+      <div class="post-card" data-page="post-detail" data-id="${p.id}">
+        <div class="post-title">${esc(p.title)}</div>
+        <div class="post-meta">${p.author} · ${p.views}浏览 · ${p.likes}赞</div>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+// ── 高校卡片渲染 ──
+function renderUniCard(u, showChance = false) {
+  const gap = userScore ? userScore - u.gaokao_score : null;
+  const chance = gap !== null ? getChanceInfo(gap) : null;
+  const isFav = false;
+  return `<div class="uni-card" data-page="uni-detail" data-id="${u.id}">
+    <button class="uni-card-fav ${isFav?'active':''}" onclick="event.stopPropagation();toggleFav(${u.id},this)">⭐</button>
+    <div class="uni-card-header">
+      <div class="uni-card-name">${esc(u.cn)}</div>
+      <span class="uni-card-level ${getLevelClass(u.level)}">${u.level.split('/')[0]}</span>
+    </div>
+    <div class="uni-card-meta">
+      <span>📍${u.loc}</span><span>${u.type}</span><span>排名#${u.rank}</span>
+    </div>
+    <div class="uni-card-score">
+      <span class="val">${u.gaokao_score}</span><span class="unit">分参考线</span>
+    </div>
+    ${chance ? `<div class="uni-card-chance ${chance.cls}">${userScore}分 · ${chance.text}（差${Math.abs(gap)}分）</div>` : ''}
+    <div class="uni-card-stats">
+      <span class="uni-stat">就业率 <strong>${u.employment_rate}%</strong></span>
+      <span class="uni-stat">起薪 <strong>${formatSalary(u.avg_salary)}</strong></span>
+      <span class="uni-stat">⭐${u.stars}</span>
+    </div>
+  </div>`;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
 // ── 高校列表 ──
 async function loadUniversities(page = 1) {
   currentUniPage = page;
-  const q = document.getElementById('uniSearch')?.value || '';
-  const region = document.getElementById('filterRegion')?.value || '';
-  const level = document.getElementById('filterLevel')?.value || '';
-  const type = document.getElementById('filterType')?.value || '';
-  const sortEl = document.getElementById('sortUni');
-  const sortParts = sortEl ? sortEl.value.split('-') : ['rank', 'asc'];
-  const sort = sortParts[0], order = sortParts[1];
-  const offset = (page - 1) * 20;
-
-  // 骨架屏
-  const grid = document.getElementById('uniGrid');
-  grid.innerHTML = Array(12).fill(skeletonUniCard()).join('');
-
+  const q = $('uniSearch')?.value || '';
+  const region = $('filterRegion')?.value || '';
+  const level = $('filterLevel')?.value || '';
+  const type_ = $('filterType')?.value || '';
+  const sortVal = $('sortUni')?.value || 'rank-asc';
+  const [sort, order] = sortVal.split('-');
+  const params = new URLSearchParams({limit:20, offset:(page-1)*20, sort, order});
+  if (q) params.set('q', q);
+  if (region) params.set('region', region);
+  if (level) params.set('level', level);
+  if (type_) params.set('type', type_);
   try {
-    const data = await apiGet(`/universities?q=${encodeURIComponent(q)}&region=${region}&level=${level}&type=${type}&sort=${sort}&order=${order}&limit=20&offset=${offset}`);
-    const total = data.total || 0;
-    document.getElementById('uniResultsInfo').textContent = `共 ${total} 所高校，第 ${page} 页`;
-    grid.innerHTML = (data.data || []).map(renderUniCard).join('');
-    animateCards(grid);
-
-    const totalPages = Math.ceil(total / 20);
-    const pagEl = document.getElementById('uniPagination');
-    if (totalPages > 1) {
-      let pages = [];
-      for (let i = 1; i <= totalPages; i++) {
-        if (i === 1 || i === totalPages || Math.abs(i - page) <= 2) pages.push(i);
-        else if (pages[pages.length - 1] !== '...') pages.push('...');
-      }
-      pagEl.innerHTML = pages.map(p => p === '...' ? `<span class="btn btn-ghost btn-sm" style="pointer-events:none">...</span>` :
-        `<button class="btn btn-sm ${p === page ? 'btn-primary' : 'btn-ghost'}" onclick="loadUniversities(${p})">${p}</button>`
-      ).join('');
-    } else { pagEl.innerHTML = ''; }
-    attachFavBtns();
-  } catch(e) {
-    grid.innerHTML = '<p style="color:var(--red);text-align:center;padding:2rem">加载失败</p>';
-  }
+    const r = await apiGet('/universities?' + params);
+    $('uniResultsInfo').textContent = `共 ${r.total} 所高校`;
+    $('uniGrid').innerHTML = r.data.map(u => renderUniCard(u, true)).join('');
+    renderPagination('uniPagination', r.total, 20, page, p => loadUniversities(p));
+  } catch(e) { toast('加载失败'); }
 }
 
-function attachFavBtns() {
-  document.querySelectorAll('.fav-btn').forEach(btn => {
-    btn.onclick = e => {
-      e.stopPropagation();
-      e.preventDefault();
-      const uniId = parseInt(btn.dataset.uni);
-      toggleFav(uniId, btn);
-    };
-  });
+function filterByScore(score) {
+  userScore = score;
+  localStorage.setItem('unipulse_score', score);
+  loadUniversities(1);
 }
 
 // ── 高校详情 ──
 async function loadUniDetail(id) {
-  document.getElementById('uniDetailContent').innerHTML = `
-    <div style="display:flex;gap:1rem;align-items:center;margin-bottom:2rem">
-      <button class="btn btn-ghost btn-sm" onclick="navigate('universities')">← 返回</button>
-    </div>
-    <div style="display:flex;gap:1rem;align-items:center;margin-bottom:2rem;flex-wrap:wrap">
-      <div class="skeleton" style="width:80px;height:80px;border-radius:14px;flex-shrink:0"></div>
-      <div style="flex:1">
-        <div class="skeleton" style="width:50%;height:24px;margin-bottom:8px"></div>
-        <div class="skeleton" style="width:70%;height:14px;margin-bottom:6px"></div>
-        <div class="skeleton" style="width:60%;height:14px"></div>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:0.8rem;margin-bottom:2rem">
-      ${Array(6).fill('<div class="skeleton" style="height:70px;border-radius:10px"></div>').join('')}
-    </div>`;
-
   try {
-    const u = await apiGet(`/universities/${id}`);
-    const tagsHtml = (u.tags || []).map(t => `<span class="tag ${tagClass(t.type || 'blue')}">${escapeHtml(t.text)}</span>`).join('');
-    const progHtml = (u.programs || []).map(p => `
-      <tr>
-        <td>${escapeHtml(p.program_name)}</td>
-        <td class="${salaryClass(p.salary_avg)}">${salaryLabel(p.salary_avg)}</td>
-        <td class="${salaryClass(p.salary_entry)}">${salaryLabel(p.salary_entry)}</td>
-        <td>${p.employment_rate ? p.employment_rate + '%' : '—'}</td>
-        <td>${p.prospects ? p.prospects + '/100' : '—'}</td>
-      </tr>`).join('');
-    const progCatsHtml = (u.program_categories || []).map(p => `<span class="tag tag-blue">${escapeHtml(p.icon)} ${escapeHtml(p.name)}</span>`).join('');
-    const favBtn = isFaved(u.id) ? '⭐ 已收藏' : '⭐ 收藏';
-    const favClass = isFaved(u.id) ? 'btn-primary' : 'btn-ghost';
-
-    document.getElementById('uniDetailContent').innerHTML = `
-      <button class="btn btn-ghost btn-sm" onclick="navigate('universities')" style="margin-bottom:1rem">← 返回列表</button>
+    const u = await apiGet('/universities/' + id);
+    const gap = userScore ? userScore - u.gaokao_score : null;
+    const chance = gap !== null ? getChanceInfo(gap) : null;
+    const metrics = u.metrics || {};
+    $('uniDetailContent').innerHTML = `
+    <div class="uni-detail">
+      <button class="btn btn-ghost btn-sm" onclick="navigate('universities')" style="margin-bottom:1rem">← 返回高校列表</button>
       <div class="uni-detail-header">
-        <div class="uni-detail-logo" style="background:${escapeHtml(u.logo || '#3b82f6')}">${escapeHtml(u.initials || u.cn?.charAt(0))}</div>
         <div class="uni-detail-info">
-          <h1>${escapeHtml(u.cn)} <small style="font-size:0.5em;color:var(--text3)">${escapeHtml(u.name)}</small></h1>
-          <div class="uni-meta-row">
-            <span class="meta-item">📍 ${escapeHtml(u.loc)} · ${escapeHtml(u.region)}</span>
-            <span class="meta-item">🏆 软科排名 #${u.rank}</span>
-            <span class="meta-item">🎓 ${escapeHtml(u.level)}</span>
-            <span class="meta-item">📖 ${escapeHtml(u.type)}</span>
+          <h1>${esc(u.cn)}</h1>
+          <div style="color:var(--text3);font-size:0.9rem;margin-bottom:0.3rem">${esc(u.name)}</div>
+          <div class="uni-detail-tags">
+            ${(u.tags||[]).map(t => `<span class="tag tag-${tagType(t.text)}">${t.text}</span>`).join('')}
           </div>
-          <div class="uni-tags">${tagsHtml}</div>
+          <p style="color:var(--text2);font-size:0.88rem;margin-top:0.8rem">${esc(u.description)}</p>
+          ${chance ? `<div style="margin-top:1rem"><span class="uni-card-chance ${chance.cls}" style="font-size:0.9rem;padding:6px 16px">${userScore}分 · ${chance.text}（差${Math.abs(gap)}分）</span></div>` : ''}
         </div>
-        <button class="btn ${favClass} fav-btn" data-uni="${u.id}">${favBtn}</button>
+        <div class="uni-detail-score-box">
+          <div class="label">参考分数线</div>
+          <div class="big">${u.gaokao_score}</div>
+          <div class="label">排名 #${u.rank}</div>
+          <div style="margin-top:0.8rem">
+            <button class="btn btn-ghost btn-sm" onclick="addToCompare(${u.id},'${esc(u.cn)}',${u.gaokao_score})">⚖️ 加入对比</button>
+          </div>
+        </div>
       </div>
-      <div class="uni-description">${escapeHtml(u.description)}</div>
-      ${u.program_categories?.length ? `<div style="margin-bottom:1.5rem"><strong>开设专业：</strong>${progCatsHtml}</div>` : ''}
-      <div class="metrics-grid">
-        <div class="metric-card"><div class="val">${u.gaokao_score || '—'}</div><div class="lbl">高考分数线</div></div>
-        <div class="metric-card"><div class="val">${u.avg_salary ? '¥' + (u.avg_salary/1000).toFixed(1) + 'k' : '—'}</div><div class="lbl">平均月薪</div></div>
-        <div class="metric-card"><div class="val">${u.employment_rate ? u.employment_rate + '%' : '—'}</div><div class="lbl">就业率</div></div>
-        <div class="metric-card"><div class="val">${u.stars?.toFixed(1) || '—'}</div><div class="lbl">评分</div></div>
-        <div class="metric-card"><div class="val">¥${((u.tuition || 5000) / 1000).toFixed(1)}k</div><div class="lbl">年学费(元)</div></div>
-        <div class="metric-card"><div class="val">${u.reviews || 0}</div><div class="lbl">评价数</div></div>
-      </div>
-      ${Object.keys(u.metrics || {}).length ? `
-      <h3 style="margin:1.5rem 0 1rem">📊 六维能力图</h3>
-      <div class="metrics-grid" style="grid-template-columns:repeat(3,1fr)">
-        ${Object.entries(u.metrics || {}).map(([k, v]) => `<div class="metric-card">
-          <div class="val">${typeof v === 'number' ? v + '%' : '—'}</div>
-          <div class="lbl">${escapeHtml(k)}</div>
-          <div class="progress-bar"><div class="progress-fill" style="width:${typeof v === 'number' ? v + '%' : '0'}"></div></div>
-        </div>`).join('')}
-      </div>` : ''}
-      ${u.programs?.length ? `
-      <h3 style="margin:1.5rem 0 1rem">💼 各专业就业数据</h3>
-      <table class="emp-table">
-        <thead><tr><th>专业</th><th>平均月薪</th><th>起步月薪</th><th>就业率</th><th>前景评分</th></tr></thead>
-        <tbody>${progHtml}</tbody>
-      </table>` : ''}
-      ${progCatsHtml ? `<h3 style="margin:1.5rem 0 1rem">🔗 相关专业</h3><div class="uni-tags">${progCatsHtml}</div>` : ''}`;
 
-    attachFavBtns();
-    document.querySelectorAll('.progress-fill').forEach(bar => {
-      const target = parseFloat(bar.style.width);
-      bar.style.width = '0';
-      setTimeout(() => { bar.style.width = target + '%'; }, 300);
-    });
-  } catch(e) {
-    document.getElementById('uniDetailContent').innerHTML = `<p style="color:var(--red)">加载失败: ${e.message}</p>`;
-  }
+      <div class="uni-detail-metrics">
+        ${Object.entries(metrics).map(([k,v]) => `
+          <div class="metric-card">
+            <div class="metric-val" style="color:${v>=85?'var(--green)':v>=70?'var(--accent2)':'var(--yellow)'}">${v}</div>
+            <div class="metric-label">${k}</div>
+            <div class="metric-bar"><div class="metric-bar-fill ${v>=85?'fill-green':v>=70?'fill-accent':'fill-yellow'}" style="width:${v}%"></div></div>
+          </div>`).join('')}
+        <div class="metric-card">
+          <div class="metric-val" style="color:var(--green)">${u.employment_rate}%</div>
+          <div class="metric-label">就业率</div>
+          <div class="metric-bar"><div class="metric-bar-fill fill-green" style="width:${u.employment_rate}%"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" style="color:var(--accent2)">${formatSalary(u.avg_salary)}</div>
+          <div class="metric-label">平均起薪/月</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" style="color:var(--yellow)">¥${u.tuition?.toLocaleString()}/年</div>
+          <div class="metric-label">学费</div>
+        </div>
+      </div>
+
+      ${u.programs && u.programs.length > 0 ? `
+      <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:0.8rem">💼 专业就业数据</h2>
+      <div style="overflow-x:auto">
+        <table class="emp-table">
+          <thead><tr><th>专业</th><th>平均薪资</th><th>起薪</th><th>就业率</th><th>内卷指数</th><th>前景</th></tr></thead>
+          <tbody>${u.programs.map(p => `<tr>
+            <td><strong>${esc(p.program_name)}</strong></td>
+            <td>${formatSalary(p.salary_avg)}</td>
+            <td>${formatSalary(p.salary_entry)}</td>
+            <td style="color:${p.employment_rate>=97?'var(--green)':'var(--text)'}">${p.employment_rate}%</td>
+            <td style="color:${p.pressure>=75?'var(--red)':p.pressure>=60?'var(--yellow)':'var(--green)'}">${p.pressure}/100</td>
+            <td style="color:${p.prospects>=85?'var(--green)':'var(--text)'}">${p.prospects}/100</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      ${u.programs.map(p => p.description ? `<p style="font-size:0.82rem;color:var(--text3);margin-top:0.5rem"><strong>${esc(p.program_name)}：</strong>${esc(p.description)}</p>` : '').join('')}
+      ` : ''}
+    </div>`;
+  } catch(e) { toast('加载失败'); }
+}
+
+// ── 院校对比 ──
+function loadCompare() {
+  renderCompareSlots();
+  $('compareResult').classList.add('hidden');
+}
+
+function renderCompareSlots() {
+  $('compareSlots').innerHTML = Array.from({length:5}, (_, i) => {
+    const item = compareList[i];
+    if (item) {
+      return `<div class="compare-slot filled">
+        <button class="slot-remove" onclick="removeCompare(${i})">✕</button>
+        <div class="slot-name">${esc(item.name)}</div>
+        <div class="slot-score">${item.score}分</div>
+      </div>`;
+    }
+    return `<div class="compare-slot" onclick="pickForCompare(${i})">
+      <div class="slot-placeholder">+ 添加院校</div>
+    </div>`;
+  }).join('');
+  $('compareGoBtn').disabled = compareList.length < 2;
+}
+
+async function pickForCompare(slot) {
+  const q = prompt('输入高校名称搜索：');
+  if (!q) return;
+  try {
+    const r = await apiGet('/universities?q=' + encodeURIComponent(q) + '&limit=8');
+    if (r.data.length === 0) { toast('未找到'); return; }
+    const choice = r.data.length === 1 ? r.data[0] : r.data.find(u => u.cn === q) || r.data[0];
+    compareList[slot] = {id: choice.id, name: choice.cn, score: choice.gaokao_score};
+    localStorage.setItem('unipulse_compare', JSON.stringify(compareList));
+    renderCompareSlots();
+  } catch(e) { toast('搜索失败'); }
+}
+
+function removeCompare(idx) {
+  compareList.splice(idx, 1);
+  localStorage.setItem('unipulse_compare', JSON.stringify(compareList));
+  renderCompareSlots();
+}
+
+function addToCompare(id, name, score) {
+  if (compareList.length >= 5) { toast('最多对比5所'); return; }
+  if (compareList.some(c => c.id === id)) { toast('已在对比中'); return; }
+  compareList.push({id, name, score});
+  localStorage.setItem('unipulse_compare', JSON.stringify(compareList));
+  toast('已加入对比');
+}
+
+async function doCompare() {
+  if (compareList.length < 2) return;
+  try {
+    const ids = compareList.map(c => c.id);
+    const data = await apiPost('/compare', ids);
+    renderCompareResult(data);
+  } catch(e) { toast('对比失败'); }
+}
+
+function renderCompareResult(unis) {
+  const fields = [
+    {label:'排名', key:'rank', fmt:v=>'#'+v, lower:true},
+    {label:'参考分数线', key:'gaokao_score', fmt:v=>v+'分', lower:false},
+    {label:'就业率', key:'employment_rate', fmt:v=>v+'%', lower:false},
+    {label:'平均起薪', key:'avg_salary', fmt:v=>formatSalary(v)+'/月', lower:false},
+    {label:'评分', key:'stars', fmt:v=>'⭐'+v, lower:false},
+    {label:'学费/年', key:'tuition', fmt:v=>'¥'+v?.toLocaleString(), lower:true},
+    {label:'地区', key:'loc', fmt:v=>v},
+    {label:'类型', key:'type', fmt:v=>v},
+    {label:'层次', key:'level', fmt:v=>v},
+  ];
+  $('compareResult').classList.remove('hidden');
+  $('compareResult').innerHTML = `
+    <div class="compare-result">
+      <table class="compare-table">
+        <thead><tr><th></th>${unis.map(u=>`<th>${esc(u.cn)}</th>`).join('')}</tr></thead>
+        <tbody>${fields.map(f => {
+          const vals = unis.map(u => u[f.key]);
+          const best = f.lower ? Math.min(...vals.filter(v=>v!=null)) : Math.max(...vals.filter(v=>v!=null));
+          return `<tr><td>${f.label}</td>${unis.map(u => {
+            const v = u[f.key];
+            const isBest = v === best && vals.filter(x=>x===best).length === 1;
+            return `<td class="${isBest?'best':''}">${f.fmt(v)}</td>`;
+          }).join('')}</tr>`;
+        }).join('')}
+        ${unis[0]?.metrics ? Object.keys(unis[0].metrics).map(k => {
+          const vals = unis.map(u => u.metrics?.[k] || 0);
+          const best = Math.max(...vals);
+          return `<tr><td>${k}</td>${unis.map(u => {
+            const v = u.metrics?.[k] || 0;
+            return `<td class="${v===best&&vals.filter(x=>x===best).length===1?'best':''}">${v}</td>`;
+          }).join('')}</tr>`;
+        }).join('') : ''}
+        <tr><td>操作</td>${unis.map(u=>`<td><button class="btn btn-ghost btn-sm" data-page="uni-detail" data-id="${u.id}">查看详情</button></td>`).join('')}</tr>
+        </tbody>
+      </table>
+    </div>`;
 }
 
 // ── 专业列表 ──
 async function loadProgramsFull() {
   try {
-    const progs = await apiGet('/programs');
-    const grid = document.getElementById('programGridFull');
-    grid.innerHTML = (progs || []).map((p, i) => `
-      <div class="program-card" data-page="program-detail" data-name="${escapeHtml(p.name)}" style="animation:cardFade 0.4s ease ${i*50}ms both">
-        <div class="program-icon">${escapeHtml(p.icon || '📚')}</div>
-        <div class="program-name">${escapeHtml(p.name)}</div>
-        <div class="program-count">${p.count} 所高校开设</div>
+    const p = await apiGet('/programs');
+    $('programGridFull').innerHTML = p.map(pr => `
+      <div class="program-card" data-page="program-detail" data-name="${encodeURIComponent(pr.name)}">
+        <div class="prog-icon">${pr.icon}</div>
+        <div class="prog-name">${pr.name}</div>
+        <div class="prog-count">${pr.count}所高校</div>
       </div>`).join('');
-  } catch(e) { console.error(e); }
+  } catch(e) {}
 }
 
-// ── 专业详情 ──
 async function loadProgramDetail(name) {
-  document.getElementById('programDetailContent').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>加载中...</p></div>';
   try {
-    const data = await apiGet(`/programs/${encodeURIComponent(name)}`);
-    const uniCards = Object.entries(data.employment || {}).map(([uniName, info]) => {
-      const u = info.uni;
-      const progs = (info.programs || []).map(p => `
-        <tr>
-          <td>${escapeHtml(p.program_name)}</td>
-          <td class="${salaryClass(p.salary_avg)}">${salaryLabel(p.salary_avg)}</td>
-          <td>${p.employment_rate ? p.employment_rate + '%' : '—'}</td>
-          <td>${p.prospects ? p.prospects + '/100' : '—'}</td>
-        </tr>`).join('');
-      return `<div class="uni-card" style="margin-bottom:1rem;cursor:default">
-        <h4>${escapeHtml(uniName)} <small style="color:var(--text3)">#${u.rank} · ${escapeHtml(u.level)}</small></h4>
-        ${progs ? `<table class="emp-table"><thead><tr><th>专业方向</th><th>平均月薪</th><th>就业率</th><th>前景</th></tr></thead><tbody>${progs}</tbody></table>` : '<p style="color:var(--text3);font-size:0.85rem">暂无就业数据</p>'}
-      </div>`;
-    }).join('');
-    document.getElementById('programDetailContent').innerHTML = `
-      <button class="btn btn-ghost btn-sm" onclick="navigate('programs')" style="margin-bottom:1rem">← 返回专业</button>
-      <div class="uni-detail-header">
-        <div class="program-icon" style="font-size:3rem">${escapeHtml(data.icon || '📚')}</div>
-        <div><h1>${escapeHtml(data.name)}</h1><p style="color:var(--text2)">${Object.keys(data.employment || {}).length} 所高校开设此专业</p></div>
-      </div>
-      ${uniCards || '<p style="color:var(--text3)">暂无详细数据</p>'}`;
-  } catch(e) {
-    document.getElementById('programDetailContent').innerHTML = `<p style="color:var(--red)">加载失败: ${e.message}</p>`;
-  }
+    const d = await apiGet('/programs/' + name);
+    const unis = d.universities || [];
+    const emp = d.employment || {};
+    $('programDetailContent').innerHTML = `
+      <button class="btn btn-ghost btn-sm" onclick="navigate('programs')" style="margin-bottom:1rem">← 返回专业列表</button>
+      <h1>${d.icon} ${esc(d.name)}</h1>
+      <p style="color:var(--text2);margin:0.5rem 0 1rem">共 ${unis.length} 所高校开设此专业</p>
+      <div class="uni-grid">${unis.slice(0,20).map(cn => {
+        const e = emp[cn];
+        if (e) {
+          return `<div class="uni-card" data-page="uni-detail" data-id="${e.uni.id}">
+            <div class="uni-card-header"><div class="uni-card-name">${esc(cn)}</div><span class="uni-card-level ${getLevelClass(e.uni.level)}">${e.uni.level.split('/')[0]}</span></div>
+            <div class="uni-card-meta"><span>📍${e.uni.loc}</span><span>#${e.uni.rank}</span></div>
+            ${e.programs.length > 0 ? `<div class="uni-card-stats">${e.programs.slice(0,2).map(p => `<span class="uni-stat">起薪 <strong>${formatSalary(p.salary_entry)}</strong></span>`).join('')}</div>` : ''}
+          </div>`;
+        }
+        return `<div class="uni-card"><div class="uni-card-name">${esc(cn)}</div></div>`;
+      }).join('')}</div>`;
+  } catch(e) { toast('加载失败'); }
 }
 
 // ── 论坛 ──
 async function loadForum(page = 1) {
   currentForumPage = page;
-  const sort = document.getElementById('forumSort')?.value || 'recent';
-  const category = document.getElementById('forumCategory')?.value || '';
-  const offset = (page - 1) * 20;
-  const postsEl = document.getElementById('forumPosts');
-  postsEl.innerHTML = Array(5).fill('<div class="skeleton" style="height:100px;border-radius:14px;margin-bottom:0.8rem"></div>').join('');
-
+  const sort = $('forumSort')?.value || 'recent';
+  const cat = $('forumCategory')?.value || '';
+  const params = new URLSearchParams({sort, limit:15, offset:(page-1)*15});
+  if (cat) params.set('category', cat);
   try {
-    const data = await apiGet(`/forum/posts?sort=${sort}&category=${category}&limit=20&offset=${offset}`);
-    const total = data.total || 0;
-    postsEl.innerHTML = (data.data || []).map((p, i) => `
-      <div class="forum-post-card" data-page="post-detail" data-id="${p.id}" style="animation:cardFade 0.35s ease ${i*60}ms both">
-        <div class="forum-post-title">${escapeHtml(p.title)}</div>
-        <div class="forum-post-excerpt">${escapeHtml(p.content?.slice(0, 180))}</div>
-        <div class="forum-post-meta">
-          <span>👤 ${escapeHtml(p.author)}</span>
-          <span>🏷️ ${escapeHtml(p.category)}</span>
-          <span>👁️ ${p.views}</span>
-          <span>❤️ ${p.likes}</span>
-          <span>💬 ${p.comment_count || 0}</span>
-          <span>${relativeTime(p.created_at)}</span>
-        </div>
-        <div class="uni-tags" style="margin-top:0.5rem">
-          ${(p.tags || []).map(t => `<span class="tag tag-blue">${escapeHtml(t)}</span>`).join('')}
-        </div>
-      </div>`).join('') || '<div class="empty-state"><p>暂无帖子</p></div>';
-
-    const allTags = (data.data || []).flatMap(p => p.tags || []);
-    const tagCounts = {};
-    allTags.forEach(t => tagCounts[t] = (tagCounts[t] || 0) + 1);
-    document.getElementById('tagCloud').innerHTML = Object.entries(tagCounts).slice(0, 20).map(([t, c]) =>
-      `<span class="tag tag-blue">${escapeHtml(t)} (${c})</span>`
-    ).join('');
-
-    const totalPages = Math.ceil(total / 20);
-    const pagEl = document.getElementById('forumPagination');
-    if (totalPages > 1) {
-      pagEl.innerHTML = Array.from({length: Math.min(totalPages, 10)}, (_, i) => {
-        const p = i + 1;
-        return `<button class="btn btn-sm ${p === page ? 'btn-primary' : 'btn-ghost'}" onclick="loadForum(${p})">${p}</button>`;
-      }).join('');
-    } else { pagEl.innerHTML = ''; }
-  } catch(e) { postsEl.innerHTML = '<p style="color:var(--red);text-align:center;padding:2rem">加载失败</p>'; }
-}
-
-// ── 帖子详情 ──
-async function loadPostDetail(id) {
-  document.getElementById('postDetailContent').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>加载中...</p></div>';
-  try {
-    const p = await apiGet(`/forum/posts/${id}`);
-    const commentsHtml = (p.comments || []).map(c => `
-      <div class="comment-card">
-        <div class="comment-author">${escapeHtml(c.author)}</div>
-        <div class="comment-text">${escapeHtml(c.text)}</div>
-        <div class="comment-meta">❤️ ${c.likes} · ${relativeTime(c.created_at)}</div>
+    const r = await apiGet('/forum/posts?' + params);
+    $('forumPosts').innerHTML = r.data.map(p => `
+      <div class="post-card" data-page="post-detail" data-id="${p.id}">
+        <div class="post-title">${esc(p.title)}</div>
+        <div class="post-meta">${p.category} · ${p.author} · ${p.views}浏览 · ${p.likes}赞 · ${p.comment_count}评论</div>
+        <div class="post-tags">${(p.tags||[]).map(t=>`<span class="post-tag">${esc(t)}</span>`).join('')}</div>
       </div>`).join('');
-    document.getElementById('postDetailContent').innerHTML = `
-      <button class="btn btn-ghost btn-sm" onclick="navigate('forum')" style="margin-bottom:1rem">← 返回论坛</button>
-      <div class="forum-post-card" style="cursor:default">
-        <div class="post-detail-title">${escapeHtml(p.title)}</div>
-        <div class="post-detail-meta">
-          <span>👤 ${escapeHtml(p.author)}</span>
-          <span>🏷️ ${escapeHtml(p.category)}</span>
-          <span>👁️ ${p.views} 浏览</span>
-          <span>❤️ ${p.likes} 赞</span>
-          <span>💬 ${(p.comments || []).length} 评论</span>
-          <span>${relativeTime(p.created_at)}</span>
-        </div>
-        <div class="uni-tags" style="margin-bottom:1rem">
-          ${(p.tags || []).map(t => `<span class="tag tag-blue">${escapeHtml(t)}</span>`).join('')}
-        </div>
-        <div class="post-detail-content"><p>${escapeHtml(p.content)}</p></div>
-        <button class="btn btn-ghost btn-sm" onclick="likePost(${p.id})">❤️ 赞 (${p.likes})</button>
-      </div>
-      <h3 style="margin:2rem 0 1rem">💬 评论</h3>
-      <form id="commentForm" style="margin-bottom:1.5rem">
-        <div class="form-group"><textarea id="commentText" class="form-input form-textarea" placeholder="写下你的评论..." required></textarea></div>
-        <div class="form-group"><input type="text" id="commentAuthor" class="form-input" placeholder="你的昵称" value="匿名用户"></div>
-        <button type="submit" class="btn btn-primary btn-sm">发表评论</button>
-      </form>
-      <div id="commentsArea">${commentsHtml || '<p style="color:var(--text3)">暂无评论，来说两句？</p>'}</div>`;
-    document.getElementById('commentForm')?.addEventListener('submit', e => {
-      e.preventDefault();
-      submitComment(p.id);
-    });
-  } catch(e) {
-    document.getElementById('postDetailContent').innerHTML = `<p style="color:var(--red)">加载失败: ${e.message}</p>`;
-  }
+    renderPagination('forumPagination', r.total, 15, page, p => loadForum(p));
+  } catch(e) {}
 }
 
-async function likePost(id) {
+async function loadPostDetail(id) {
   try {
-    await fetch(API + `/forum/posts/${id}/like`, {method:'POST'});
-    showToast('👍 点赞成功');
-  } catch(e) { showToast('点赞失败', 'error'); }
+    const p = await apiGet('/forum/posts/' + id);
+    $('postDetailContent').innerHTML = `
+      <div class="post-detail">
+        <button class="btn btn-ghost btn-sm" onclick="navigate('forum')" style="margin-bottom:1rem">← 返回论坛</button>
+        <h1>${esc(p.title)}</h1>
+        <div style="color:var(--text3);font-size:0.85rem;margin:0.5rem 0">${p.category} · ${p.author} · ${p.views}浏览 · ${p.likes}赞</div>
+        <div class="post-tags" style="margin-bottom:1rem">${(p.tags||[]).map(t=>`<span class="post-tag">${esc(t)}</span>`).join('')}</div>
+        <div style="line-height:1.8;margin-bottom:2rem">${esc(p.content)}</div>
+        <h3 style="margin-bottom:0.8rem">评论 (${p.comments.length})</h3>
+        ${p.comments.map(c => `
+          <div class="comment-card">
+            <div class="comment-author">${esc(c.author)}</div>
+            <div class="comment-text">${esc(c.text)}</div>
+            <div class="comment-meta">${c.likes}赞</div>
+          </div>`).join('')}
+        <form class="comment-form" onsubmit="submitComment(event,${id})">
+          <input type="text" id="commentAuthor" class="form-input" placeholder="你的昵称" value="匿名用户">
+          <textarea id="commentText" class="form-input form-textarea" placeholder="写下你的评论..." required></textarea>
+          <button type="submit" class="btn btn-primary">发表评论</button>
+        </form>
+      </div>`;
+  } catch(e) { toast('加载失败'); }
 }
 
-async function submitComment(postId) {
-  const text = document.getElementById('commentText')?.value?.trim();
-  const author = document.getElementById('commentAuthor')?.value?.trim() || '匿名用户';
-  if (!text) return;
+async function submitComment(e, postId) {
+  e.preventDefault();
+  const author = $('commentAuthor').value || '匿名用户';
+  const text = $('commentText').value;
+  if (!text.trim()) return;
   try {
-    const r = await fetch(API + `/forum/posts/${postId}/comments`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({author, text})
-    });
-    if (r.ok) {
-      showToast('评论已发布');
-      loadPostDetail(postId);
-    }
-  } catch(e) { showToast('评论失败', 'error'); }
+    await apiPost(`/forum/posts/${postId}/comments`, {author, text});
+    toast('评论成功');
+    loadPostDetail(postId);
+  } catch(e) { toast('评论失败'); }
 }
 
-// ── 发帖 ──
-document.getElementById('newPostBtn')?.addEventListener('click', () => navigate('new-post'));
-document.addEventListener('submit', e => {
-  if (e.target.id === 'newPostForm') {
-    e.preventDefault();
-    const title = document.getElementById('postTitle')?.value?.trim();
-    const category = document.getElementById('postCategory')?.value;
-    const content = document.getElementById('postContent')?.value?.trim();
-    const tags = document.getElementById('postTags')?.value?.split(',').map(t => t.trim()).filter(Boolean) || [];
-    const author = document.getElementById('postAuthor')?.value?.trim() || '匿名用户';
-    if (!title || !content) { showToast('请填写标题和内容', 'error'); return; }
-    fetch(API + '/forum/posts', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({title, category, content, tags, author})
-    }).then(r => r.json()).then(d => {
-      showToast('帖子发布成功！');
-      navigate('forum');
-    }).catch(() => showToast('发布失败', 'error'));
-  }
-  if (e.target.id === 'aiReportForm') {
-    e.preventDefault();
-    generateAiReport();
-  }
-});
-
-// ── AI报告 ──
-async function generateAiReport() {
-  const score = parseInt(document.getElementById('aiScore')?.value);
-  const province = document.getElementById('aiProvince')?.value || '全国';
-  const interests = document.getElementById('aiInterests')?.value?.trim() || '';
-  const subjects = document.getElementById('aiSubjects')?.value?.trim() || '';
-  const preference = document.getElementById('aiPreference')?.value || '综合';
-  if (!score) { showToast('请输入高考分数', 'error'); return; }
-  const btn = document.querySelector('#aiReportForm button[type=submit]');
-  if (btn) { btn.disabled = true; btn.textContent = '🤖 AI分析中...'; }
-
-  const resultEl = document.getElementById('aiReportResult');
-  resultEl.classList.remove('hidden');
-  resultEl.innerHTML = `
-    <div class="ai-loading">
-      <div class="ai-loading-dots">
-        <span></span><span></span><span></span>
-      </div>
-      <p style="color:var(--text2);font-size:0.95rem">正在分析 ${score} 分的最佳选校方案...</p>
-      <p style="color:var(--text3);font-size:0.82rem;margin-top:0.5rem">结合 ${province} 考生数据，为你匹配最优高校</p>
-    </div>`;
-
+// ── AI选校 ──
+async function submitAiReport(e) {
+  e.preventDefault();
+  const score = parseInt($('aiScore').value);
+  if (!score || score < 300 || score > 750) { toast('请输入有效分数(300-750)'); return; }
+  userScore = score;
+  localStorage.setItem('unipulse_score', score);
+  const province = $('aiProvince').value;
+  const interests = $('aiInterests').value;
+  const subjects = $('aiSubjects').value;
+  const preference = $('aiPreference').value;
+  $('aiReportResult').classList.remove('hidden');
+  $('aiReportResult').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>AI正在为你生成选校方案...</p></div>';
   try {
-    const data = await apiGet(`/ai-report?score=${score}&province=${encodeURIComponent(province)}&interests=${encodeURIComponent(interests)}&subjects=${encodeURIComponent(subjects)}&preference=${encodeURIComponent(preference)}`);
-    renderAiReport(data);
-  } catch(e) {
-    resultEl.innerHTML = `<p style="color:var(--red);padding:1rem">报告生成失败: ${e.message}</p>`;
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '生成选校报告 🚀'; }
-  }
+    const params = new URLSearchParams({score, province, interests, subjects, preference});
+    const r = await apiGet('/ai-report?' + params);
+    renderAiReport(r);
+  } catch(e) { toast('生成失败'); }
 }
 
-function renderAiReport(data) {
-  const el = document.getElementById('aiReportResult');
-  el.classList.remove('hidden');
+function renderAiReport(r) {
   const groups = [
-    { label:'🚀 冲一冲（分数线略高于你的分数）', key:'冲', color:'var(--yellow)' },
-    { label:'🎯 稳一稳（分数线接近你的分数）', key:'稳', color:'var(--green)' },
-    { label:'🛡️ 保一保（分数线低于你的分数）', key:'保', color:'var(--accent)' },
+    {key:'冲', label:'🎯 冲一冲', desc:'分数略高于你的院校，有录取希望', cls:'gap-chong', color:'var(--red)'},
+    {key:'稳', label:'✅ 稳一稳', desc:'分数与你相当，录取概率较大', cls:'gap-wen', color:'var(--green)'},
+    {key:'保', label:'🛡️ 保一保', desc:'分数低于你的院校，确保不滑档', cls:'gap-bao', color:'var(--accent2)'},
   ];
-  let html = `<div class="report-section" style="animation:cardFade 0.5s ease">
-    <h3>📊 选校报告 — ${data.score}分 · ${data.province} · ${data.preference}</h3>
-    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;padding:0.8rem;background:var(--surface2);border-radius:var(--radius-sm)">
-      <div style="flex:1;text-align:center;padding:0.5rem">
-        <div style="font-size:1.3rem;font-weight:800;color:var(--yellow)">${data.suggestions?.冲?.length || 0}</div>
-        <div style="font-size:0.75rem;color:var(--text3)">冲一冲</div>
-      </div>
-      <div style="flex:1;text-align:center;padding:0.5rem;border-left:1px solid var(--border);border-right:1px solid var(--border)">
-        <div style="font-size:1.3rem;font-weight:800;color:var(--green)">${data.suggestions?.稳?.length || 0}</div>
-        <div style="font-size:0.75rem;color:var(--text3)">稳一稳</div>
-      </div>
-      <div style="flex:1;text-align:center;padding:0.5rem">
-        <div style="font-size:1.3rem;font-weight:800;color:var(--accent)">${data.suggestions?.保?.length || 0}</div>
-        <div style="font-size:0.75rem;color:var(--text3)">保一保</div>
-      </div>
+  $('aiReportResult').innerHTML = `
+    <div style="text-align:center;margin-bottom:1.5rem;padding:1.5rem;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border)">
+      <div style="font-size:2.5rem;font-weight:900;color:var(--accent2)">${r.score}分</div>
+      <div style="color:var(--text3)">${r.province} · ${r.preference==='综合'?'综合平衡':r.preference==='就业'?'优先就业':r.preference==='深造'?'优先深造':'优先城市'}</div>
+    </div>
+    ${groups.map(g => {
+      const list = r.suggestions[g.key] || [];
+      return `<div class="report-section">
+        <h3 style="color:${g.color}">${g.label} <span style="font-size:0.78rem;font-weight:400;color:var(--text3)">${g.desc}</span></h3>
+        <div class="report-group">${list.map(u => {
+          const gap = u.gaokao_score - r.score;
+          return `<div class="report-card" data-page="uni-detail" data-id="${u.id}">
+            <div class="rc-name">${esc(u.cn)}</div>
+            <div class="rc-score">${u.gaokao_score}分 · ${u.loc} · ${u.level.split('/')[0]}</div>
+            <span class="rc-gap ${g.cls}">${gap>0?'高'+gap+'分':'低'+Math.abs(gap)+'分'}</span>
+          </div>`;
+        }).join('')}</div>
+      </div>`;
+    }).join('')}
+    <div class="report-section">
+      <h3>💡 填报建议</h3>
+      <ul class="report-tips">${(r.tips||[]).map(t=>`<li>${t}</li>`).join('')}</ul>
     </div>`;
-
-  groups.forEach(g => {
-    const unis = data.suggestions?.[g.key] || [];
-    if (!unis.length) return;
-    html += `
-      <h4 style="color:${g.color};margin:1.2rem 0 0.8rem">${g.label}</h4>
-      ${unis.map((u, i) => `
-        <div class="report-uni-card" style="animation:cardFade 0.35s ease ${i*80}ms both">
-          <div class="report-uni-rank">#${i + 1}</div>
-          <div class="report-uni-info">
-            <div class="report-uni-name">${escapeHtml(u.cn)} <small style="color:var(--text3)">${escapeHtml(u.level)}</small></div>
-            <div class="report-uni-meta">📍 ${escapeHtml(u.loc)} · 分数线 ${u.gaokao_score}分 · 就业率 ${u.employment_rate}% · 平均月薪 ¥${((u.avg_salary||0)/1000).toFixed(1)}k</div>
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick="navigate('uni-detail',{id:${u.id}})">详情</button>
-        </div>`).join('')}
-      `;
-  });
-
-  html += `</div>
-  <div class="tips-card" style="animation:cardFade 0.5s ease 0.3s both">
-    <h4>💡 选校建议</h4>
-    <ul style="margin:0;padding-left:1.2rem">${(data.tips || []).map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
-  </div>`;
-
-  el.innerHTML = html;
 }
 
 // ── 收藏 ──
-async function loadFavorites() {
-  const favs = JSON.parse(localStorage.getItem('unipulse_favs') || '[]');
-  const grid = document.getElementById('favGrid');
-  const empty = document.getElementById('favEmpty');
-  if (!favs.length) {
-    grid.innerHTML = '';
-    const d = document.createElement('div');
-    d.className = 'empty-state';
-    d.id = 'favEmpty';
-    d.innerHTML = '<div class="empty-icon">⭐</div><h3>暂无收藏</h3><p>浏览高校时点击⭐收藏，方便对比</p><button class="btn btn-primary" data-page="universities">去浏览高校</button>';
-    grid.appendChild(d);
-    return;
-  }
+async function toggleFav(uniId, btn) {
   try {
-    const ids = favs.join(',');
-    const data = await apiGet(`/universities?limit=${favs.length}`);
-    const favUnis = (data.data || []).filter(u => favs.includes(u.id));
-    grid.innerHTML = favUnis.map(renderUniCard).join('');
-    if (!favUnis.length) {
-      const d = document.createElement('div');
-      d.className = 'empty-state';
-      d.id = 'favEmpty';
-      d.innerHTML = '<div class="empty-icon">⭐</div><h3>暂无收藏</h3><p>浏览高校时点击⭐收藏，方便对比</p><button class="btn btn-primary" data-page="universities">去浏览高校</button>';
-      grid.innerHTML = '';
-      grid.appendChild(d);
+    if (btn.classList.contains('active')) {
+      await fetch(`${API}/favorites?session_id=${sessionId}&uni_id=${uniId}`, {method:'DELETE'});
+      btn.classList.remove('active');
+      toast('已取消收藏');
+    } else {
+      await apiPost(`/favorites?session_id=${sessionId}&uni_id=${uniId}`, {});
+      btn.classList.add('active');
+      toast('已收藏');
     }
-    animateCards(grid);
-    attachFavBtns();
-  } catch(e) { console.error(e); }
+  } catch(e) {}
+}
+
+async function loadFavorites() {
+  try {
+    const list = await apiGet('/favorites/' + sessionId);
+    if (list.length === 0) {
+      $('favGrid').innerHTML = `<div class="empty-state"><div class="empty-icon">⭐</div><h3>暂无收藏</h3><p>浏览高校时点击⭐收藏</p><button class="btn btn-primary" data-page="universities">去浏览</button></div>`;
+    } else {
+      $('favGrid').innerHTML = list.map(u => renderUniCard(u)).join('');
+    }
+  } catch(e) {}
 }
 
 // ── 搜索 ──
-document.getElementById('searchBtn')?.addEventListener('click', () => {
-  const q = document.getElementById('searchInput')?.value?.trim();
-  if (q) navigate('search', { q });
-});
-document.getElementById('searchInput')?.addEventListener('keydown', e => {
-  if (e.key === 'Enter') {
-    const q = e.target.value?.trim();
-    if (q) navigate('search', { q });
-  }
-});
-
 async function performSearch(q) {
   if (!q) return;
-  document.getElementById('searchQueryDisplay').textContent = `"${escapeHtml(q)}" 的搜索结果`;
-  document.getElementById('searchResults').innerHTML = Array(4).fill(skeletonUniCard()).join('');
+  $('searchQueryDisplay').textContent = `搜索：${q}`;
   try {
-    const data = await apiGet(`/search?q=${encodeURIComponent(q)}`);
-    const uniHtml = data.universities?.length ? `<h3 style="margin:1.5rem 0 1rem">🏫 高校 (${data.universities.length})</h3><div class="uni-grid">${data.universities.map(renderUniCard).join('')}</div>` : '';
-    const progHtml = data.programs?.length ? `<h3 style="margin:1.5rem 0 1rem">📚 专业 (${data.programs.length})</h3><div class="program-grid">${data.programs.map(p => `<div class="program-card" data-page="program-detail" data-name="${escapeHtml(p.name)}"><div class="program-icon">${escapeHtml(p.icon || '📚')}</div><div class="program-name">${escapeHtml(p.name)}</div></div>`).join('')}</div>` : '';
-    const postHtml = data.posts?.length ? `<h3 style="margin:1.5rem 0 1rem">💬 论坛帖子 (${data.posts.length})</h3>${data.posts.map(p => `<div class="forum-post-card" data-page="post-detail" data-id="${p.id}"><div class="forum-post-title">${escapeHtml(p.title)}</div><div class="forum-post-meta"><span>🏷️ ${escapeHtml(p.category)}</span><span>👁️ ${p.views}</span><span>❤️ ${p.likes}</span></div></div>`).join('')}` : '';
-    const resultsEl = document.getElementById('searchResults');
-    resultsEl.innerHTML = uniHtml + progHtml + postHtml || '<div class="empty-state"><p>未找到相关内容</p></div>';
-    if (data.universities?.length) animateCards(resultsEl.querySelector('.uni-grid') || resultsEl);
-    attachFavBtns();
-  } catch(e) {
-    document.getElementById('searchResults').innerHTML = '<p style="color:var(--red);text-align:center;padding:2rem">搜索失败</p>';
+    const r = await apiGet('/search?q=' + encodeURIComponent(q));
+    let html = '';
+    if (r.universities.length) {
+      html += `<div class="search-section"><h3>🏫 高校 (${r.universities.length})</h3><div class="uni-grid">${r.universities.map(u=>renderUniCard(u)).join('')}</div></div>`;
+    }
+    if (r.programs.length) {
+      html += `<div class="search-section"><h3>📚 专业</h3>${r.programs.map(p=>`<div class="program-card" data-page="program-detail" data-name="${encodeURIComponent(p.name)}" style="display:inline-block;margin:4px"><span style="font-size:1.2rem">${p.icon}</span> ${p.name}</div>`).join('')}</div>`;
+    }
+    if (r.posts.length) {
+      html += `<div class="search-section"><h3>💬 帖子</h3>${r.posts.map(p=>`<div class="post-card" data-page="post-detail" data-id="${p.id}"><div class="post-title">${esc(p.title)}</div><div class="post-meta">${p.author} · ${p.views}浏览</div></div>`).join('')}</div>`;
+    }
+    if (!html) html = '<div class="empty-state"><h3>未找到结果</h3></div>';
+    $('searchResults').innerHTML = html;
+  } catch(e) {}
+}
+
+// ── 分页 ──
+function renderPagination(containerId, total, limit, current, onClick) {
+  const pages = Math.ceil(total / limit);
+  if (pages <= 1) { $(containerId).innerHTML = ''; return; }
+  let html = '';
+  if (current > 1) html += `<button onclick="(${onClick})(${current-1})">上一页</button>`;
+  const start = Math.max(1, current - 2);
+  const end = Math.min(pages, current + 2);
+  for (let i = start; i <= end; i++) {
+    html += `<button class="${i===current?'active':''}" onclick="(${onClick})(${i})">${i}</button>`;
   }
+  if (current < pages) html += `<button onclick="(${onClick})(${current+1})">下一页</button>`;
+  $(containerId).innerHTML = html;
 }
 
-// ── 筛选事件 ──
-document.getElementById('uniSearch')?.addEventListener('input', debounce(() => loadUniversities(1), 400));
-document.getElementById('filterRegion')?.addEventListener('change', () => loadUniversities(1));
-document.getElementById('filterLevel')?.addEventListener('change', () => loadUniversities(1));
-document.getElementById('filterType')?.addEventListener('change', () => loadUniversities(1));
-document.getElementById('sortUni')?.addEventListener('change', () => loadUniversities(1));
-document.getElementById('clearFilters')?.addEventListener('click', () => {
-  const ids = ['uniSearch','filterRegion','filterLevel','filterType'];
-  ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  document.getElementById('sortUni').value = 'rank-asc';
-  loadUniversities(1);
+// ── 事件绑定 ──
+document.addEventListener('DOMContentLoaded', () => {
+  // 移动端菜单
+  $('mobileToggle')?.addEventListener('click', () => $('mobileMenu').classList.toggle('open'));
+
+  // 搜索
+  $('searchBtn')?.addEventListener('click', () => { const q = $('searchInput').value; if (q) navigate('search', {q}); });
+  $('searchInput')?.addEventListener('keydown', e => { if (e.key==='Enter') { const q = $('searchInput').value; if (q) navigate('search', {q}); }});
+
+  // 首页分数快捷按钮
+  document.querySelectorAll('.quick-score').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const s = parseInt(btn.dataset.score);
+      $('heroScore').value = s;
+      doHeroScore(s);
+    });
+  });
+  $('heroScoreBtn')?.addEventListener('click', () => {
+    const s = parseInt($('heroScore').value);
+    if (s) doHeroScore(s);
+  });
+  $('heroScore')?.addEventListener('keydown', e => {
+    if (e.key==='Enter') { const s = parseInt($('heroScore').value); if (s) doHeroScore(s); }
+  });
+
+  function doHeroScore(s) {
+    userScore = s;
+    localStorage.setItem('unipulse_score', s);
+    navigate('ai-report');
+    setTimeout(() => { $('aiScore').value = s; $('aiReportForm').dispatchEvent(new Event('submit')); }, 200);
+  }
+
+  // 高校列表筛选
+  $('uniSearch')?.addEventListener('input', debounce(() => loadUniversities(1), 400));
+  $('filterRegion')?.addEventListener('change', () => loadUniversities(1));
+  $('filterLevel')?.addEventListener('change', () => loadUniversities(1));
+  $('filterType')?.addEventListener('change', () => loadUniversities(1));
+  $('sortUni')?.addEventListener('change', () => loadUniversities(1));
+  $('clearFilters')?.addEventListener('click', () => {
+    $('uniSearch').value = ''; $('filterRegion').value = ''; $('filterLevel').value = ''; $('filterType').value = '';
+    loadUniversities(1);
+  });
+
+  // 分数滑块
+  $('scoreSlider')?.addEventListener('input', e => {
+    $('scoreDisplay').textContent = e.target.value + '分';
+  });
+  $('scoreFilterBtn')?.addEventListener('click', () => {
+    filterByScore(parseInt($('scoreSlider').value));
+  });
+
+  // 论坛
+  $('forumSort')?.addEventListener('change', () => loadForum(1));
+  $('forumCategory')?.addEventListener('change', () => loadForum(1));
+  $('newPostBtn')?.addEventListener('click', () => navigate('new-post'));
+  $('newPostForm')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const data = {
+      title: $('postTitle').value,
+      category: $('postCategory').value,
+      content: $('postContent').value,
+      author: $('postAuthor').value || '匿名用户',
+      tags: $('postTags').value ? $('postTags').value.split(',').map(t=>t.trim()) : []
+    };
+    try {
+      await apiPost('/forum/posts', data);
+      toast('发布成功');
+      navigate('forum');
+    } catch(e) { toast('发布失败'); }
+  });
+
+  // AI报告
+  $('aiReportForm')?.addEventListener('submit', submitAiReport);
+
+  // 对比
+  $('compareGoBtn')?.addEventListener('click', doCompare);
+
+  // 加载首页
+  navigate('home');
 });
-document.getElementById('forumSort')?.addEventListener('change', () => loadForum(1));
-document.getElementById('forumCategory')?.addEventListener('change', () => loadForum(1));
 
-// ── 防抖 ──
-function debounce(fn, ms) {
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-}
-
-// ── 移动端菜单 ──
-document.getElementById('mobileToggle')?.addEventListener('click', () => {
-  document.getElementById('mobileMenu').classList.toggle('active');
-});
-
-// ── 卡片渐入动画 ──
-const styleEl = document.createElement('style');
-styleEl.textContent = `
-@keyframes cardFade {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-`;
-document.head.appendChild(styleEl);
-
-// ── 初始化 ──
-loadHome();
-fetch(API + '/track', {method:'POST', body: JSON.stringify({path: location.pathname})}).catch(() => {});
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
