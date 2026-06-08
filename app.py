@@ -496,6 +496,57 @@ def ai_report(
         ]
     }
 
+# ── 分数段统计 ──
+
+@app.get("/api/score-distribution")
+def score_distribution():
+    """返回分数段院校数量分布"""
+    conn = get_db()
+    ranges = [(300,400),(400,450),(450,500),(500,550),(550,580),(580,600),(600,620),(620,640),(640,660),(660,680),(680,700),(700,750)]
+    result = []
+    for lo,hi in ranges:
+        cnt = conn.execute("SELECT COUNT(*) FROM universities WHERE gaokao_score BETWEEN ? AND ?", (lo,hi)).fetchone()[0]
+        unis = conn.execute("SELECT id,cn,gaokao_score,level,type,loc FROM universities WHERE gaokao_score BETWEEN ? AND ? ORDER BY gaokao_score DESC LIMIT 5", (lo,hi)).fetchall()
+        result.append({"range":f"{lo}-{hi}","count":cnt,"samples":[dict(u) for u in unis]})
+    conn.close()
+    return result
+
+@app.get("/api/admission-chance")
+def admission_chance(score: int, uni_id: int):
+    """计算录取概率（简化模型：基于分数线差值）"""
+    conn = get_db()
+    u = conn.execute("SELECT gaokao_score, cn FROM universities WHERE id=?", (uni_id,)).fetchone()
+    if not u:
+        conn.close(); raise HTTPException(404, "University not found")
+    gap = score - u["gaokao_score"]
+    if gap >= 30: chance, level = 0.95, "稳上"
+    elif gap >= 20: chance, level = 0.85, "较稳"
+    elif gap >= 10: chance, level = 0.70, "有把握"
+    elif gap >= 0: chance, level = 0.55, "可冲"
+    elif gap >= -10: chance, level = 0.35, "有风险"
+    elif gap >= -20: chance, level = 0.20, "较难"
+    elif gap >= -30: chance, level = 0.10, "困难"
+    else: chance, level = 0.03, "极难"
+    conn.close()
+    return {"uni_id":uni_id,"uni_name":u["cn"],"score":score,"cutoff":u["gaokao_score"],"gap":gap,"chance":chance,"level":level}
+
+@app.post("/api/compare")
+def compare_univers(ids: list[int]):
+    """院校对比：多校指标并列展示"""
+    conn = get_db()
+    result = []
+    for uid in ids[:5]:
+        r = conn.execute("SELECT * FROM universities WHERE id=?", (uid,)).fetchone()
+        if r:
+            d = dict(r)
+            d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
+            d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+            emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uid,)).fetchall()
+            d["programs"] = [dict(e) for e in emp]
+            result.append(d)
+    conn.close()
+    return result
+
 # ── 静态文件 ──
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
