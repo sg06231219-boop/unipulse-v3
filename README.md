@@ -1,22 +1,14 @@
-# UniPulse v3 — 高考选校平台
-
-中国80所高校真实数据，涵盖分数线、就业薪资、专业对比、AI智能选校报告。
-
-## 功能
-- 🏫 80所中国高校数据（分数线/就业率/薪资/六维能力图）
-- 📚 21个专业分类 + 就业数据
-- 💬 选校论坛（发帖/评论/点赞）
-- 🤖 AI智能选校报告（冲稳保方案）
-- ⭐ 收藏对比
-- 🔍 全站搜索
-
-## 数据来源
-- 软科2025中国大学排名
-- 各高校就业质量报告
-- 教育部公开数据
-
-## 部署
-```bash
-pip install -r requirements.txt
-uvicorn app:app --host 0.0.0.0 --port $PORT
-```
+IyBVbmlQdWxzZSB2MyDigJQg6auY6ICD6YCJ5qCh5bmz5Y+wCgrkuK3lm704
+MOaJgOmrmOagoeecn+WunuaVsOaNru+8jOa2teebluWIhuaVsOe6v+OAgeWw
+seS4muiWqui1hOOAgeS4k+S4muWvueavlOOAgUFJ5pm66IO96YCJ5qCh5oql
+5ZGK44CCCgojIyDlip/og70KLSDwn4+rIDgw5omA5Lit5Zu96auY5qCh5pWw
+5o2u77yI5YiG5pWw57q/L+WwseS4mueOhy/olqrotYQv5YWt57u06IO95Yqb
+5Zu+77yJCi0g8J+TmiAyMeS4quS4k+S4muWIhuexuyArIOWwseS4muaVsOaN
+rgotIPCfkqwg6YCJ5qCh6K665Z2b77yI5Y+R5biWL+ivhOiuui/ngrnotZ7v
+vIkKLSDwn6SWIEFJ5pm66IO96YCJ5qCh5oql5ZGK77yI5Yay56iz5L+d5pa5
+5qGI77yJCi0g4q2QIOaUtuiXj+WvueavlAotIPCflI0g5YWo56uZ5pCc57Si
+CgojIyDmlbDmja7mnaXmupAKLSDova/np5EyMDI15Lit5Zu95aSn5a2m5o6S
+5ZCNCi0g5ZCE6auY5qCh5bCx5Lia6LSo6YeP5oql5ZGKCi0g5pWZ6IKy6YOo
+5YWs5byA5pWw5o2uCgojIyDpg6jnvbIKYGBgYmFzaApwaXAgaW5zdGFsbCAt
+ciByZXF1aXJlbWVudHMudHh0CnV2aWNvcm4gYXBwOmFwcCAtLWhvc3QgMC4w
+LjAuMCAtLXBvcnQgJFBPUlQKYGBgCg==
