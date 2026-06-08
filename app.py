@@ -428,6 +428,7 @@ def track(path: str = "", referrer: str = "", user_agent: str = "", ip: str = ""
 
 # ── AI选校报告 ──
 
+@app.get("/api/ai-report")
 @app.post("/api/ai-report")
 def ai_report(
     score: int, province: str = "全国",
