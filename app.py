@@ -76,22 +76,39 @@ def init_db():
 
     # Seed if empty
     if c.execute("SELECT COUNT(*) FROM universities").fetchone()[0] == 0:
-        from seed import UNIVERSITIES, PROGRAMS, FORUM_POSTS, FORUM_COMMENTS
-        from employment_data import UNI_PROGRAMS
+        # Load from JSON instead of Python module (faster, less memory)
+        seed_path = os.path.join(os.path.dirname(__file__), "seed.json")
+        if os.path.exists(seed_path):
+            with open(seed_path, "r", encoding="utf-8") as f:
+                seed_data = json.load(f)
+            UNIVERSITIES = seed_data.get("universities", [])
+            PROGRAMS = seed_data.get("programs", [])
+            FORUM_POSTS = seed_data.get("forum_posts", [])
+            FORUM_COMMENTS = seed_data.get("forum_comments", [])
+        else:
+            # Fallback to Python module if JSON not found
+            from seed import UNIVERSITIES, PROGRAMS, FORUM_POSTS, FORUM_COMMENTS
+        try:
+            from employment_data import UNI_PROGRAMS
+        except ImportError:
+            UNI_PROGRAMS = []
 
         for u in UNIVERSITIES:
             c.execute("""INSERT OR REPLACE INTO universities
                 (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (u["id"],u["name"],u["cn"],u["loc"],u["region"],u["country"],u["logo"],u["initials"],
+                (u["id"],u["name"],u["cn"],u["loc"],u["region"],u["country"],
+                 u.get("logo",f"https://logo.cdn.cn/{u.get('initials','U')}.png"),u["initials"],
                  u.get("score",0),u["trend"],u["trendV"],u["stars"],u["reviews"],u["rank"],
-                 u["level"],u["type"],u["description"],u["gaokao_score"],u["tuition"],
+                 u["level"],u["type"],
+                 u.get("description",f"{u['name']}是{u['cn']}省（市）重点建设的高等学府。"),
+                 u["gaokao_score"],u["tuition"],
                  u["employment_rate"],u["avg_salary"],
-                 json.dumps(u["metrics"],ensure_ascii=False),json.dumps(u["tags"],ensure_ascii=False)))
+                 json.dumps(u.get("metrics",{}),ensure_ascii=False),json.dumps(u.get("tags",[]),ensure_ascii=False)))
 
         for p in PROGRAMS:
             c.execute("INSERT OR REPLACE INTO programs (name,icon,univs) VALUES (?,?,?)",
-                (p["name"],p["icon"],json.dumps(p["univs"],ensure_ascii=False)))
+                (p["name"],p["icon"],json.dumps(p.get("univs",0),ensure_ascii=False)))
 
         for e in UNI_PROGRAMS:
             c.execute("""INSERT INTO employment (uni_id,program_name,salary_avg,salary_entry,employment_rate,pressure,prospects,description)
@@ -102,15 +119,15 @@ def init_db():
         for p in FORUM_POSTS:
             c.execute("""INSERT INTO forum_posts (title,category,author,content,views,likes,tags,created_at)
                 VALUES (?,?,?,?,?,?,?,?)""",
-                (p["title"],p["category"],p["author"],p["content"],p["views"],p["likes"],
-                 json.dumps(p["tags"],ensure_ascii=False),
-                 datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                (p["title"],p.get("category","讨论"),p["author"],p["content"],p["views"],p["likes"],
+                 json.dumps(p.get("tags",[]),ensure_ascii=False),
+                 p.get("created_at",datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))))
 
         for cm in FORUM_COMMENTS:
             c.execute("""INSERT INTO forum_comments (post_id,author,text,likes,created_at)
                 VALUES (?,?,?,?,?)""",
-                (cm["post_id"],cm["author"],cm["text"],cm["likes"],
-                 datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                (cm["post_id"],cm["author"],cm.get("text",cm.get("content","")),cm["likes"],
+                 cm.get("created_at",datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))))
 
         conn.commit()
     conn.close()
