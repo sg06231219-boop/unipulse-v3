@@ -612,8 +612,10 @@ def admin_stats():
     ec = conn.execute("SELECT COUNT(*) FROM employment").fetchone()[0]
     pc = conn.execute("SELECT COUNT(*) FROM forum_posts").fetchone()[0]
     vc = conn.execute("SELECT COUNT(*) FROM analytics").fetchone()[0]
+    today = datetime.date.today().isoformat()
+    tv = conn.execute("SELECT COUNT(*) FROM analytics WHERE DATE(created_at)=?", (today,)).fetchone()[0]
     conn.close()
-    return {"universities":uc,"employment_records":ec,"forum_posts":pc,"visits":vc}
+    return {"universities":uc,"employment_records":ec,"forum_posts":pc,"visits":vc,"today_visits":tv}
 
 @app.get("/api/university/search")
 def search_universities_api(q: str = "", limit: int = 10):
@@ -646,18 +648,87 @@ def get_province_scores(uni_id: int):
     if not r:
         conn.close(); raise HTTPException(404, "University not found")
     scores = json.loads(r["province_scores"]) if r["province_scores"] else {}
+    gaokao = conn.execute("SELECT gaokao_score FROM universities WHERE id=?", (uni_id,)).fetchone()
     conn.close()
     # If no province data, generate from gaokao_score
-    if not scores:
-        base = conn.execute("SELECT gaokao_score FROM universities WHERE id=?", (uni_id,)).fetchone()
+    if not scores and gaokao:
         if base:
             import random
             random.seed(uni_id)
             provinces = ["北京","天津","河北","山西","内蒙古","辽宁","吉林","黑龙江","上海","江苏","浙江","安徽","福建","江西","山东","河南","湖北","湖南","广东","广西","海南","重庆","四川","贵州","云南","西藏","陕西","甘肃","青海","宁夏","新疆"]
             offsets = {"北京":-8,"天津":-5,"河北":5,"山西":3,"内蒙古":-10,"辽宁":-3,"吉林":-8,"黑龙江":-12,"上海":-8,"江苏":3,"浙江":2,"安徽":5,"福建":-2,"江西":2,"山东":8,"河南":10,"湖北":3,"湖南":2,"广东":-5,"广西":-8,"海南":-15,"重庆":-2,"四川":2,"贵州":-12,"云南":-14,"西藏":-25,"陕西":3,"甘肃":-15,"青海":-20,"宁夏":-18,"新疆":-16}
             for p in provinces:
-                scores[p] = max(200, base["gaokao_score"] + offsets.get(p, 0) + random.randint(-8, 8))
+                scores[p] = max(200, gaokao["gaokao_score"] + offsets.get(p, 0) + random.randint(-8, 8))
     return {"uni_id": uni_id, "uni_name": r["cn"], "scores": scores}
+
+
+# ── 管理员后台 ──
+
+@app.get("/admin")
+def admin_panel():
+    return FileResponse(os.path.join(static_dir, "admin.html"))
+
+@app.put("/admin/universities/{uni_id}")
+def admin_update_uni(uni_id: int, body: dict):
+    conn = get_db()
+    r = conn.execute("SELECT 1 FROM universities WHERE id=?", (uni_id,)).fetchone()
+    if not r:
+        conn.close(); raise HTTPException(404, "Not found")
+    sets = []
+    params = []
+    for k in ["cn","name","type","description","loc","level"]:
+        if k in body:
+            sets.append(f"{k}=?")
+            params.append(body[k])
+    if "province_scores" in body:
+        sets.append("province_scores=?")
+        params.append(json.dumps(body["province_scores"], ensure_ascii=False))
+    if "gaokao_score" in body:
+        sets.append("gaokao_score=?")
+        params.append(body["gaokao_score"])
+    if sets:
+        params.append(uni_id)
+        conn.execute(f"UPDATE universities SET {','.join(sets)} WHERE id=?", params)
+        conn.commit()
+    conn.close()
+    return {"status": "updated"}
+
+@app.delete("/admin/universities/{uni_id}")
+def admin_delete_uni(uni_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM universities WHERE id=?", (uni_id,))
+    conn.execute("DELETE FROM employment WHERE uni_id=?", (uni_id,))
+    conn.execute("DELETE FROM favorites WHERE uni_id=?", (uni_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
+
+@app.delete("/admin/forum/posts/{post_id}")
+def admin_delete_post(post_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM forum_comments WHERE post_id=?", (post_id,))
+    conn.execute("DELETE FROM forum_posts WHERE id=?", (post_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
+
+@app.post("/admin/reseed")
+def admin_reseed():
+    """重新灌入种子数据"""
+    conn = get_db()
+    conn.executescript("DELETE FROM forum_comments; DELETE FROM forum_posts; DELETE FROM favorites; DELETE FROM analytics; DELETE FROM employment; DELETE FROM programs; DELETE FROM universities;")
+    conn.close()
+    init_db()
+    return {"status": "reseeded"}
+
+@app.delete("/admin/forum-purge")
+def admin_forum_purge():
+    conn = get_db()
+    conn.execute("DELETE FROM forum_comments")
+    conn.execute("DELETE FROM forum_posts")
+    conn.commit()
+    conn.close()
+    return {"status": "purged"}
 
 # ── 静态文件 ──
 
