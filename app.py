@@ -84,6 +84,26 @@ def init_db():
     """)
     conn.commit()
 
+    # 确保新字段存在（兼容旧数据库）
+    new_cols = [
+        ("dormitory", "TEXT DEFAULT ''"),
+        ("canteen", "TEXT DEFAULT ''"),
+        ("campus_life", "TEXT DEFAULT ''"),
+        ("clubs", "TEXT DEFAULT ''"),
+        ("transport", "TEXT DEFAULT ''"),
+        ("surroundings", "TEXT DEFAULT ''"),
+        ("humanistic", "TEXT DEFAULT ''"),
+        ("scenery", "TEXT DEFAULT ''"),
+        ("motto", "TEXT DEFAULT ''"),
+        ("notable_alumni", "TEXT DEFAULT ''"),
+    ]
+    for col_name, col_type in new_cols:
+        try:
+            c.execute(f"ALTER TABLE universities ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except Exception:
+            pass  # 列已存在则忽略
+
     # Seed if empty
     if c.execute("SELECT COUNT(*) FROM universities").fetchone()[0] == 0:
         # Load from JSON instead of Python module (faster, less memory)
