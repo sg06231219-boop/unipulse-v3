@@ -1,4 +1,4 @@
-/* UniPulse — 高考志愿填报神器 · 暗色主题 */
+﻿/* UniPulse — 高考志愿填报神器 · 暗色主题 */
 :root {
   --bg: #060b1a; --bg2: #0c1225; --bg3: #131b30; --bg4: #1a2340;
   --surface: #111c35; --surface2: #182547; --surface3: #1e2f55;
@@ -303,3 +303,74 @@ input,select,textarea{font-family:var(--font)}
 /* ── 搜索结果 ── */
 .search-section{margin-bottom:1.5rem}
 .search-section h3{font-size:1rem;font-weight:700;margin-bottom:0.6rem}
+
+/* ── 卡片3D倾斜效果 ── */
+.uni-card{perspective:800px;transition:transform 0.3s cubic-bezier(.4,0,.2,1),box-shadow 0.3s ease,border-color 0.3s ease}
+.uni-card::after{content:'';position:absolute;inset:0;border-radius:var(--radius);background:radial-gradient(circle at var(--mouse-x,50%) var(--mouse-y,50%),rgba(79,143,255,0.06),transparent 60%);opacity:0;transition:opacity 0.3s ease;pointer-events:none}
+.uni-card:hover::after{opacity:1}
+
+/* ── 涟漪动画 ── */
+.ripple,.btn-ripple{position:absolute;border-radius:50%;background:rgba(79,143,255,0.15);transform:scale(0);animation:rippleAnim 0.6s ease-out;pointer-events:none}
+@keyframes rippleAnim{to{transform:scale(4);opacity:0}}
+
+/* ── 收藏心跳动画 ── */
+.uni-card-fav.active{animation:heartBeat 0.4s ease}
+@keyframes heartBeat{0%{transform:scale(1)}30%{transform:scale(1.4)}60%{transform:scale(0.9)}100%{transform:scale(1)}}
+
+/* ── 录取概率环 ── */
+.chance-ring{width:56px;height:56px;position:relative;display:inline-flex;align-items:center;justify-content:center;margin:0.3rem 0}
+.chance-ring svg{position:absolute;transform:rotate(-90deg);width:56px;height:56px}
+.ring-bg{fill:none;stroke:var(--border);stroke-width:4}
+.ring-progress{fill:none;stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset 1s cubic-bezier(.4,0,.2,1)}
+.ring-wen .ring-progress{stroke:var(--green)}
+.ring-chong .ring-progress{stroke:var(--red)}
+.ring-bao .ring-progress{stroke:var(--accent2)}
+.ring-text{font-size:0.72rem;font-weight:800;z-index:1;color:var(--text)}
+
+/* ── 对比搜索下拉 ── */
+.compare-search-wrapper{position:relative}
+.compare-search-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:0 0 var(--radius) var(--radius);max-height:240px;overflow-y:auto;z-index:50;box-shadow:var(--shadow)}
+.compare-search-item{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background 0.15s}
+.compare-search-item:hover{background:var(--surface2)}
+.compare-search-item.disabled{opacity:0.4;cursor:default}
+.item-name{font-weight:600;font-size:0.88rem}
+.item-score{font-size:0.78rem;color:var(--text3)}
+
+/* ── AI报告冲稳保差异化卡片 ── */
+.chong-card{border-left:3px solid var(--red) !important}
+.wen-card{border-left:3px solid var(--green) !important}
+.bao-card{border-left:3px solid var(--accent2) !important}
+.report-card{position:relative;overflow:hidden}
+.report-card::before{content:'';position:absolute;top:0;left:0;right:0;height:0;transition:height 0.3s ease}
+.chong-card::before{background:rgba(255,71,87,0.08)}
+.wen-card::before{background:rgba(0,214,143,0.08)}
+.bao-card::before{background:rgba(79,143,255,0.08)}
+.report-card:hover::before{height:100%}
+.rc-actions{margin-top:0.5rem;display:flex;gap:0.3rem}
+
+/* ── AI加载动画 ── */
+.ai-loading{text-align:center;padding:3rem}
+.ai-spinner{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--accent);border-right-color:var(--purple);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 1rem}
+
+/* ── 骨架屏 ── */
+.skeleton-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem}
+.skeleton-card{min-height:180px;border-radius:var(--radius)}
+.skeleton-detail{min-height:400px;border-radius:var(--radius)}
+
+/* ── 移动端底部导航 ── */
+.mobile-bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(12,18,37,0.95);border-top:1px solid var(--border);z-index:100;padding:0.5rem 0;justify-content:space-around;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.mob-nav-item{display:flex;flex-direction:column;align-items:center;font-size:1.3rem;color:var(--text3);text-decoration:none;padding:0.2rem 0.8rem;transition:color 0.2s}
+.mob-nav-item.active{color:var(--accent2)}
+@media(max-width:768px){
+  .mobile-bottom-nav{display:flex}
+  .site-footer{padding-bottom:4rem}
+}
+
+/* ── 统计计数动画 ── */
+.count-target{display:inline-block}
+.count-up{transition:all 0.3s}
+.count-up.animating{color:var(--accent2)}
+
+/* ── 页面切换动画 ── */
+.page{animation:pageIn 0.3s ease}
+@keyframes pageIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
