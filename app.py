@@ -179,7 +179,14 @@ init_db()
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.0.0","service":"UniPulse"}
+    try:
+        conn = get_db()
+        cnt = conn.execute("SELECT COUNT(*) FROM universities").fetchone()[0]
+        cols = [d[0] for d in conn.execute("SELECT * FROM universities LIMIT 1").description]
+        conn.close()
+        return {"status":"ok","version":"3.1.0","service":"UniPulse","uni_count":cnt,"columns":cols}
+    except Exception as e:
+        return {"status":"error","msg":str(e),"traceback":traceback.format_exc()}
 
 @app.get("/api/universities")
 def list_universities(
