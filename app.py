@@ -215,7 +215,7 @@ def list_programs():
     rows = conn.execute("SELECT name, icon, univs FROM programs").fetchall()
     result = []
     for r in rows:
-        result.append({"name":r["name"],"icon":r["icon"],"count":len(json.loads(r["univs"])) if r["univs"] else 0})
+        result.append({"name":r["name"],"icon":r["icon"],"count": (lambda u: len(u) if isinstance(u,list) else (int(u) if isinstance(u,(int,float)) else 0))(json.loads(r["univs"])) if r["univs"] else 0})
     conn.close()
     return result
 
