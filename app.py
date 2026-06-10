@@ -6,9 +6,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import json, os, time, hashlib, re, sqlite3, datetime
+import json, os, time, hashlib, re, sqlite3, datetime, traceback
 
 app = FastAPI(title="UniPulse v3", version="3.0.0")
+
+# 错误调试中间件
+@app.middleware("http")
+async def debug_errors(request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
