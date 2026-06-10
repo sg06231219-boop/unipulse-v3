@@ -651,15 +651,15 @@ def employment_statistics():
 def get_province_scores(uni_id: int):
     """获取某高校各省分数线"""
     conn = get_db()
-    row = conn.execute("SELECT cn, gaokao_score, province_scores FROM universities WHERE id=?", (uni_id,)).fetchone()
+    row = conn.execute("SELECT * FROM universities WHERE id=?", (uni_id,)).fetchone()
     if not row:
         conn.close()
         raise HTTPException(404, "University not found")
-    uni_name = row[0]
-    gaokao_score = row[1] or 500
-    ps_raw = row[2]
+    d = dict(row)
     conn.close()
-
+    uni_name = d.get("cn", "")
+    gaokao_score = d.get("gaokao_score", 500) or 500
+    ps_raw = d.get("province_scores")
     scores = {}
     if ps_raw:
         try:
