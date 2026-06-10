@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import json, os, time, hashlib, re, sqlite3, datetime
+import json, os, time, hashlib, re, sqlite3, datetime, random
 
 app = FastAPI(title="UniPulse v3", version="3.2.0")
 
