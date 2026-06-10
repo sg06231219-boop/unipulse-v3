@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """UniPulse v3 — 高考选校平台 · 后端"""
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
