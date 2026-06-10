@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, re, sqlite3, datetime
 
-app = FastAPI(title="UniPulse v3", version="3.0.0")
+app = FastAPI(title="UniPulse v3", version="3.1.0")
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -138,7 +138,7 @@ init_db()
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.0.0","service":"UniPulse"}
+    return {"status":"ok","version":"3.1.0","service":"UniPulse"}
 
 @app.get("/api/universities")
 def list_universities(
@@ -530,13 +530,14 @@ def score_distribution():
     return result
 
 @app.get("/api/admission-chance")
-def admission_chance(score: int, uni_id: int):
+def admission_chance(score: int, uni_id: Optional[int] = None, region: Optional[str] = None):
     """计算录取概率（简化模型：基于分数线差值）"""
     conn = get_db()
-    u = conn.execute("SELECT gaokao_score, cn FROM universities WHERE id=?", (uni_id,)).fetchone()
-    if not u:
-        conn.close(); raise HTTPException(404, "University not found")
-    gap = score - u["gaokao_score"]
+    if uni_id:
+        u = conn.execute("SELECT gaokao_score, cn FROM universities WHERE id=?", (uni_id,)).fetchone()
+        if not u:
+            conn.close(); raise HTTPException(404, "University not found")
+        gap = score - u["gaokao_score"]
     if gap >= 30: chance, level = 0.95, "稳上"
     elif gap >= 20: chance, level = 0.85, "较稳"
     elif gap >= 10: chance, level = 0.70, "有把握"
@@ -545,8 +546,30 @@ def admission_chance(score: int, uni_id: int):
     elif gap >= -20: chance, level = 0.20, "较难"
     elif gap >= -30: chance, level = 0.10, "困难"
     else: chance, level = 0.03, "极难"
-    conn.close()
-    return {"uni_id":uni_id,"uni_name":u["cn"],"score":score,"cutoff":u["gaokao_score"],"gap":gap,"chance":chance,"level":level}
+        conn.close()
+        return {"uni_id":uni_id,"uni_name":u["cn"],"score":score,"cutoff":u["gaokao_score"],"gap":gap,"chance":chance,"level":level}
+    else:
+        # Return top suggestions by score range
+        where_sql = " WHERE gaokao_score BETWEEN ? AND ?"
+        params = [score-40, score+30]
+        if region:
+            where_sql += " AND region=?"
+            params.append(region)
+        rows = conn.execute(f"SELECT id,cn,gaokao_score,level,loc FROM universities{where_sql} ORDER BY ABS(gaokao_score-?) ASC LIMIT 20", params+[score]).fetchall()
+        results = []
+        for r in rows:
+            gap = score - r["gaokao_score"]
+            if gap >= 30: c, l = 0.95, "稳上"
+            elif gap >= 20: c, l = 0.85, "较稳"
+            elif gap >= 10: c, l = 0.70, "有把握"
+            elif gap >= 0: c, l = 0.55, "可冲"
+            elif gap >= -10: c, l = 0.35, "有风险"
+            elif gap >= -20: c, l = 0.20, "较难"
+            elif gap >= -30: c, l = 0.10, "困难"
+            else: c, l = 0.03, "极难"
+            results.append({"uni_id":r["id"],"uni_name":r["cn"],"score":score,"cutoff":r["gaokao_score"],"gap":gap,"chance":c,"level":l,"loc":r["loc"],"uni_level":r["level"]})
+        conn.close()
+        return {"score":score,"results":results}
 
 @app.post("/api/compare")
 def compare_univers(ids: list[int]):
@@ -564,6 +587,54 @@ def compare_univers(ids: list[int]):
             result.append(d)
     conn.close()
     return result
+
+
+
+@app.get("/api/regions")
+def list_regions():
+    conn = get_db()
+    rows = conn.execute("SELECT region, COUNT(*) as cnt FROM universities GROUP BY region ORDER BY cnt DESC").fetchall()
+    conn.close()
+    return [{"region":r["region"],"count":r["cnt"]} for r in rows]
+
+@app.get("/api/level-stats")
+def level_stats():
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT level, COUNT(*) as cnt FROM universities GROUP BY level ORDER BY cnt DESC
+    """).fetchall()
+    conn.close()
+    return [{"level":r["level"],"count":r["cnt"]} for r in rows]
+
+@app.get("/api/admin/stats")
+def admin_stats():
+    conn = get_db()
+    uni_count = conn.execute("SELECT COUNT(*) FROM universities").fetchone()[0]
+    emp_count = conn.execute("SELECT COUNT(*) FROM employment").fetchone()[0]
+    post_count = conn.execute("SELECT COUNT(*) FROM forum_posts").fetchone()[0]
+    comment_count = conn.execute("SELECT COUNT(*) FROM forum_comments").fetchone()[0]
+    fav_count = conn.execute("SELECT COUNT(*) FROM favorites").fetchone()[0]
+    visit_count = conn.execute("SELECT COUNT(*) FROM analytics").fetchone()[0]
+    today = datetime.date.today().isoformat()
+    today_visits = conn.execute("SELECT COUNT(*) FROM analytics WHERE DATE(created_at)=?", (today,)).fetchone()[0]
+    conn.close()
+    return {"universities":uni_count,"employment_records":emp_count,"forum_posts":post_count,
+            "forum_comments":comment_count,"favorites":fav_count,"total_visits":visit_count,"today_visits":today_visits}
+
+@app.get("/api/university/search")
+def search_universities(q: str = "", limit: int = 10):
+    conn = get_db()
+    rows = conn.execute("SELECT id,cn,loc,level,type,gaokao_score FROM universities WHERE cn LIKE ? OR name LIKE ? ORDER BY rank ASC LIMIT ?",
+        (f"%{q}%",f"%{q}%",limit)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.get("/api/majors")
+def list_majors():
+    conn = get_db()
+    rows = conn.execute("SELECT DISTINCT program_name FROM employment ORDER BY program_name").fetchall()
+    conn.close()
+    return [r["program_name"] for r in rows if r["program_name"]]
 
 # ── 静态文件 ──
 
