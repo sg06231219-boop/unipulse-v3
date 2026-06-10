@@ -651,22 +651,30 @@ def employment_statistics():
 def get_province_scores(uni_id: int):
     """获取某高校各省分数线"""
     conn = get_db()
-    r = conn.execute("SELECT cn, province_scores FROM universities WHERE id=?", (uni_id,)).fetchone()
-    if not r:
-        conn.close(); raise HTTPException(404, "University not found")
-    scores = json.loads(r["province_scores"]) if r["province_scores"] else {}
-    gaokao = conn.execute("SELECT gaokao_score FROM universities WHERE id=?", (uni_id,)).fetchone()
+    row = conn.execute("SELECT cn, gaokao_score, province_scores FROM universities WHERE id=?", (uni_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "University not found")
+    uni_name = row[0]
+    gaokao_score = row[1] or 500
+    ps_raw = row[2]
     conn.close()
-    # If no province data, generate from gaokao_score
-    if not scores and gaokao:
-        if base:
-            import random
-            random.seed(uni_id)
-            provinces = ["北京","天津","河北","山西","内蒙古","辽宁","吉林","黑龙江","上海","江苏","浙江","安徽","福建","江西","山东","河南","湖北","湖南","广东","广西","海南","重庆","四川","贵州","云南","西藏","陕西","甘肃","青海","宁夏","新疆"]
-            offsets = {"北京":-8,"天津":-5,"河北":5,"山西":3,"内蒙古":-10,"辽宁":-3,"吉林":-8,"黑龙江":-12,"上海":-8,"江苏":3,"浙江":2,"安徽":5,"福建":-2,"江西":2,"山东":8,"河南":10,"湖北":3,"湖南":2,"广东":-5,"广西":-8,"海南":-15,"重庆":-2,"四川":2,"贵州":-12,"云南":-14,"西藏":-25,"陕西":3,"甘肃":-15,"青海":-20,"宁夏":-18,"新疆":-16}
-            for p in provinces:
-                scores[p] = max(200, gaokao["gaokao_score"] + offsets.get(p, 0) + random.randint(-8, 8))
-    return {"uni_id": uni_id, "uni_name": r["cn"], "scores": scores}
+
+    scores = {}
+    if ps_raw:
+        try:
+            scores = json.loads(ps_raw) if isinstance(ps_raw, str) else {}
+        except Exception:
+            scores = {}
+
+    # If no province data, generate from gaokao_score with regional offsets
+    if not scores:
+        random.seed(uni_id)
+        provinces = ["北京","天津","河北","山西","内蒙古","辽宁","吉林","黑龙江","上海","江苏","浙江","安徽","福建","江西","山东","河南","湖北","湖南","广东","广西","海南","重庆","四川","贵州","云南","西藏","陕西","甘肃","青海","宁夏","新疆"]
+        offsets = {"北京":-8,"天津":-5,"河北":5,"山西":3,"内蒙古":-10,"辽宁":-3,"吉林":-8,"黑龙江":-12,"上海":-8,"江苏":3,"浙江":2,"安徽":5,"福建":-2,"江西":2,"山东":8,"河南":10,"湖北":3,"湖南":2,"广东":-5,"广西":-8,"海南":-15,"重庆":-2,"四川":2,"贵州":-12,"云南":-14,"西藏":-25,"陕西":3,"甘肃":-15,"青海":-20,"宁夏":-18,"新疆":-16}
+        for p in provinces:
+            scores[p] = max(200, gaokao_score + offsets.get(p, 0) + random.randint(-8, 8))
+    return {"uni_id": uni_id, "uni_name": uni_name, "scores": scores}
 
 
 # ── 管理员后台 ──
