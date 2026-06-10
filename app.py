@@ -136,6 +136,13 @@ def init_db():
 
 init_db()
 
+# Ensure province_scores column exists (for existing DBs)
+try:
+    conn = get_db()
+    conn.execute("ALTER TABLE universities ADD COLUMN province_scores TEXT")
+    conn.close()
+except: pass  # Column already exists
+
 # ── API 路由 ──
 
 @app.get("/api/health")
