@@ -6,9 +6,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import json, os, time, hashlib, re, sqlite3, datetime
+import json, os, time, hashlib, re, sqlite3, datetime, traceback
 
 app = FastAPI(title="UniPulse v3", version="3.0.0")
+
+# 错误调试中间件
+@app.middleware("http")
+async def debug_errors(request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -34,7 +42,17 @@ def init_db():
         level TEXT, type TEXT, description TEXT,
         gaokao_score INTEGER, tuition INTEGER,
         employment_rate REAL, avg_salary INTEGER,
-        metrics TEXT, tags TEXT
+        metrics TEXT, tags TEXT,
+        dormitory TEXT DEFAULT '',
+        canteen TEXT DEFAULT '',
+        campus_life TEXT DEFAULT '',
+        clubs TEXT DEFAULT '',
+        transport TEXT DEFAULT '',
+        surroundings TEXT DEFAULT '',
+        humanistic TEXT DEFAULT '',
+        scenery TEXT DEFAULT '',
+        motto TEXT DEFAULT '',
+        notable_alumni TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS programs (
         name TEXT PRIMARY KEY, icon TEXT, univs TEXT
@@ -74,6 +92,26 @@ def init_db():
     """)
     conn.commit()
 
+    # 确保新字段存在（兼容旧数据库）
+    new_cols = [
+        ("dormitory", "TEXT DEFAULT ''"),
+        ("canteen", "TEXT DEFAULT ''"),
+        ("campus_life", "TEXT DEFAULT ''"),
+        ("clubs", "TEXT DEFAULT ''"),
+        ("transport", "TEXT DEFAULT ''"),
+        ("surroundings", "TEXT DEFAULT ''"),
+        ("humanistic", "TEXT DEFAULT ''"),
+        ("scenery", "TEXT DEFAULT ''"),
+        ("motto", "TEXT DEFAULT ''"),
+        ("notable_alumni", "TEXT DEFAULT ''"),
+    ]
+    for col_name, col_type in new_cols:
+        try:
+            c.execute(f"ALTER TABLE universities ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except Exception:
+            pass  # 列已存在则忽略
+
     # Seed if empty
     if c.execute("SELECT COUNT(*) FROM universities").fetchone()[0] == 0:
         # Load from JSON instead of Python module (faster, less memory)
@@ -95,8 +133,8 @@ def init_db():
 
         for u in UNIVERSITIES:
             c.execute("""INSERT OR REPLACE INTO universities
-                (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags,dormitory,canteen,campus_life,clubs,transport,surroundings,humanistic,scenery,motto,notable_alumni)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (u["id"],u["name"],u["cn"],u["loc"],u["region"],u["country"],
                  u.get("logo",f"https://logo.cdn.cn/{u.get('initials','U')}.png"),u["initials"],
                  u.get("score",0),u["trend"],u["trendV"],u["stars"],u["reviews"],u["rank"],
@@ -104,7 +142,10 @@ def init_db():
                  u.get("description",f"{u['name']}是{u['cn']}省（市）重点建设的高等学府。"),
                  u["gaokao_score"],u["tuition"],
                  u["employment_rate"],u["avg_salary"],
-                 json.dumps(u.get("metrics",{}),ensure_ascii=False),json.dumps(u.get("tags",[]),ensure_ascii=False)))
+                 json.dumps(u.get("metrics",{}),ensure_ascii=False),json.dumps(u.get("tags",[]),ensure_ascii=False),
+                 u.get("dormitory",""),u.get("canteen",""),u.get("campus_life",""),
+                 u.get("clubs",""),u.get("transport",""),u.get("surroundings",""),
+                 u.get("humanistic",""),u.get("scenery",""),u.get("motto",""),u.get("notable_alumni","")))
 
         for p in PROGRAMS:
             c.execute("INSERT OR REPLACE INTO programs (name,icon,univs) VALUES (?,?,?)",
@@ -138,7 +179,14 @@ init_db()
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.0.0","service":"UniPulse"}
+    try:
+        conn = get_db()
+        cnt = conn.execute("SELECT COUNT(*) FROM universities").fetchone()[0]
+        cols = [d[0] for d in conn.execute("SELECT * FROM universities LIMIT 1").description]
+        conn.close()
+        return {"status":"ok","version":"3.1.0","service":"UniPulse","uni_count":cnt,"columns":cols}
+    except Exception as e:
+        return {"status":"error","msg":str(e),"traceback":traceback.format_exc()}
 
 @app.get("/api/universities")
 def list_universities(
@@ -188,34 +236,64 @@ def list_universities(
 
 @app.get("/api/universities/{uni_id}")
 def get_university(uni_id: int):
-    conn = get_db()
-    r = conn.execute("SELECT * FROM universities WHERE id=?", (uni_id,)).fetchone()
-    if not r:
-        conn.close(); raise HTTPException(404,"University not found")
-    d = dict(r)
-    d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
-    d["tags"] = json.loads(d["tags"]) if d["tags"] else []
-    # Get employment data for this university
-    emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uni_id,)).fetchall()
-    d["programs"] = [dict(e) for e in emp]
-    # Check if in any program
-    progs = conn.execute("SELECT name, icon FROM programs").fetchall()
-    d["program_categories"] = []
-    for p in progs:
-        univs = json.loads(p["univs"]) if p["univs"] else []
-        if d["cn"] in univs:
-            d["program_categories"].append({"name":p["name"],"icon":p["icon"]})
-    conn.close()
-    return d
+    try:
+        conn = get_db()
+        r = conn.execute("SELECT * FROM universities WHERE id=?", (uni_id,)).fetchone()
+        if not r:
+            conn.close(); raise HTTPException(404,"University not found")
+        d = dict(r)
+        d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
+        d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        # Get employment data
+        try:
+            emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uni_id,)).fetchall()
+            d["programs"] = [dict(e) for e in emp]
+        except Exception as e:
+            d["programs"] = []
+            d["_emp_error"] = str(e)
+        # Program categories
+        try:
+            progs = conn.execute("SELECT name, icon, univs FROM programs").fetchall()
+            d["program_categories"] = []
+            for p in progs:
+                try:
+                    univs_raw = dict(p).get("univs")
+                    if univs_raw:
+                        univs = json.loads(univs_raw)
+                        if isinstance(univs, list) and d["cn"] in univs:
+                            d["program_categories"].append({"name":p["name"],"icon":p["icon"]})
+                except Exception:
+                    pass
+        except Exception as e:
+            d["program_categories"] = []
+            d["_prog_error"] = str(e)
+        conn.close()
+        return d
+    except HTTPException:
+        raise
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
 
 @app.get("/api/programs")
 def list_programs():
-    conn = get_db()
-    rows = conn.execute("SELECT name, icon, univs FROM programs").fetchall()
-    result = []
-    for r in rows:
-        result.append({"name":r["name"],"icon":r["icon"],"count":len(json.loads(r["univs"])) if r["univs"] else 0})
-    conn.close()
+    try:
+        conn = get_db()
+        rows = conn.execute("SELECT name, icon, univs FROM programs").fetchall()
+        result = []
+        for r in rows:
+            count = 0
+            try:
+                univs_raw = dict(r).get("univs")
+                if univs_raw:
+                    univs = json.loads(univs_raw)
+                    count = len(univs) if isinstance(univs, list) else int(univs) if isinstance(univs, (int, float)) else 0
+            except Exception:
+                count = 0
+            result.append({"name":r["name"],"icon":r["icon"],"count":count})
+        conn.close()
+        return result
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
     return result
 
 @app.get("/api/programs/{name}")
