@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """UniPulse v3 — 高考选校平台 · 后端"""
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
@@ -34,7 +34,17 @@ def init_db():
         level TEXT, type TEXT, description TEXT,
         gaokao_score INTEGER, tuition INTEGER,
         employment_rate REAL, avg_salary INTEGER,
-        metrics TEXT, tags TEXT
+        metrics TEXT, tags TEXT,
+        dormitory TEXT DEFAULT '',
+        canteen TEXT DEFAULT '',
+        campus_life TEXT DEFAULT '',
+        clubs TEXT DEFAULT '',
+        transport TEXT DEFAULT '',
+        surroundings TEXT DEFAULT '',
+        humanistic TEXT DEFAULT '',
+        scenery TEXT DEFAULT '',
+        motto TEXT DEFAULT '',
+        notable_alumni TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS programs (
         name TEXT PRIMARY KEY, icon TEXT, univs TEXT
@@ -95,8 +105,8 @@ def init_db():
 
         for u in UNIVERSITIES:
             c.execute("""INSERT OR REPLACE INTO universities
-                (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags,dormitory,canteen,campus_life,clubs,transport,surroundings,humanistic,scenery,motto,notable_alumni)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (u["id"],u["name"],u["cn"],u["loc"],u["region"],u["country"],
                  u.get("logo",f"https://logo.cdn.cn/{u.get('initials','U')}.png"),u["initials"],
                  u.get("score",0),u["trend"],u["trendV"],u["stars"],u["reviews"],u["rank"],
@@ -104,7 +114,10 @@ def init_db():
                  u.get("description",f"{u['name']}是{u['cn']}省（市）重点建设的高等学府。"),
                  u["gaokao_score"],u["tuition"],
                  u["employment_rate"],u["avg_salary"],
-                 json.dumps(u.get("metrics",{}),ensure_ascii=False),json.dumps(u.get("tags",[]),ensure_ascii=False)))
+                 json.dumps(u.get("metrics",{}),ensure_ascii=False),json.dumps(u.get("tags",[]),ensure_ascii=False),
+                 u.get("dormitory",""),u.get("canteen",""),u.get("campus_life",""),
+                 u.get("clubs",""),u.get("transport",""),u.get("surroundings",""),
+                 u.get("humanistic",""),u.get("scenery",""),u.get("motto",""),u.get("notable_alumni","")))
 
         for p in PROGRAMS:
             c.execute("INSERT OR REPLACE INTO programs (name,icon,univs) VALUES (?,?,?)",
@@ -189,24 +202,38 @@ def list_universities(
 @app.get("/api/universities/{uni_id}")
 def get_university(uni_id: int):
     conn = get_db()
-    r = conn.execute("SELECT * FROM universities WHERE id=?", (uni_id,)).fetchone()
-    if not r:
-        conn.close(); raise HTTPException(404,"University not found")
-    d = dict(r)
-    d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
-    d["tags"] = json.loads(d["tags"]) if d["tags"] else []
-    # Get employment data for this university
-    emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uni_id,)).fetchall()
-    d["programs"] = [dict(e) for e in emp]
-    # Check if in any program
-    progs = conn.execute("SELECT name, icon FROM programs").fetchall()
-    d["program_categories"] = []
-    for p in progs:
-        univs = json.loads(p["univs"]) if p["univs"] else []
-        if d["cn"] in univs:
-            d["program_categories"].append({"name":p["name"],"icon":p["icon"]})
-    conn.close()
-    return d
+    try:
+        r = conn.execute("SELECT * FROM universities WHERE id=?", (uni_id,)).fetchone()
+        if not r:
+            raise HTTPException(404,"University not found")
+        d = dict(r)
+        d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
+        d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        # Get employment data for this university
+        try:
+            emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uni_id,)).fetchall()
+            d["programs"] = [dict(e) for e in emp]
+        except Exception:
+            d["programs"] = []
+        # Check if in any program
+        try:
+            progs = conn.execute("SELECT name, icon FROM programs").fetchall()
+            d["program_categories"] = []
+            for p in progs:
+                univs_raw = p["univs"] if "univs" in p.keys() else None
+                if univs_raw:
+                    try:
+                        univs = json.loads(univs_raw)
+                        # univs可能是int(数量)或list(名称数组)
+                        if isinstance(univs, list) and d["cn"] in univs:
+                            d["program_categories"].append({"name":p["name"],"icon":p["icon"]})
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+        except Exception:
+            d["program_categories"] = []
+        return d
+    finally:
+        conn.close()
 
 @app.get("/api/programs")
 def list_programs():
@@ -214,7 +241,15 @@ def list_programs():
     rows = conn.execute("SELECT name, icon, univs FROM programs").fetchall()
     result = []
     for r in rows:
-        result.append({"name":r["name"],"icon":r["icon"],"count":len(json.loads(r["univs"])) if r["univs"] else 0})
+        univs_raw = r["univs"] if "univs" in r.keys() else None
+        count = 0
+        if univs_raw:
+            try:
+                univs = json.loads(univs_raw)
+                count = len(univs) if isinstance(univs, list) else int(univs) if isinstance(univs, (int, float)) else 0
+            except (json.JSONDecodeError, TypeError, ValueError):
+                count = 0
+        result.append({"name":r["name"],"icon":r["icon"],"count":count})
     conn.close()
     return result
 
