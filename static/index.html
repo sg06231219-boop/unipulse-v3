@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -12,6 +12,7 @@
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
+<!-- 前端增强版本 -->
 <body>
 <div id="app">
   <!-- 顶部导航 -->
@@ -48,11 +49,12 @@
   <!-- ===== 首页 ===== -->
   <section class="page" id="page-home">
     <div class="hero">
+      <canvas id="heroCanvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0"></canvas>
       <div class="hero-bg"></div>
       <div class="hero-content">
         <div class="hero-badge">🎓 自己淋过的雨 不想让你再淋</div>
         <h1>高考志愿 <span class="gradient-text">不再迷茫</span></h1>
-        <p class="hero-sub">80所高校真实数据 · 分数线 / 就业薪资 / 录取概率 · AI冲稳保选校方案</p>
+        <p class="hero-sub">1882所高校真实数据 · 分数线 / 就业薪资 / 录取概率 · AI冲稳保选校方案</p>
         <!-- 快速分数输入 -->
         <div class="hero-score-input">
           <div class="score-input-group">
@@ -191,9 +193,19 @@
         <h1>⚖️ 院校对比</h1>
         <p>最多同时对比5所高校的核心指标</p>
       </div>
+      <!-- 搜索下拉选择器 -->
+      <div class="compare-search-wrapper" style="max-width:400px;margin:0 auto 1rem;position:relative">
+        <input type="text" id="compareSearchInput" class="form-input" placeholder="🔍 输入高校名称搜索添加..." autocomplete="off">
+        <div id="compareSearchDropdown" class="compare-search-dropdown hidden"></div>
+      </div>
       <div class="compare-picker">
         <div class="compare-slots" id="compareSlots"></div>
         <button class="btn btn-primary btn-lg" id="compareGoBtn" disabled>开始对比</button>
+      </div>
+      <!-- 雷达图容器 -->
+      <div id="compareRadar" class="hidden" style="text-align:center;margin-top:1.5rem">
+        <h3 style="margin-bottom:0.8rem">📊 六维对比雷达图</h3>
+        <canvas id="radarCanvas"></canvas>
       </div>
       <div id="compareResult" class="hidden"></div>
     </div>
@@ -365,6 +377,15 @@
 
   <!-- Toast -->
   <div class="toast-container" id="toastContainer"></div>
+
+  <!-- 移动端底部导航 -->
+  <nav class="mobile-bottom-nav" id="mobileBottomNav">
+    <a href="#" class="mob-nav-item active" data-page="home">🏠</a>
+    <a href="#" class="mob-nav-item" data-page="universities">🏫</a>
+    <a href="#" class="mob-nav-item" data-page="ai-report">🤖</a>
+    <a href="#" class="mob-nav-item" data-page="compare">⚖️</a>
+    <a href="#" class="mob-nav-item" data-page="forum">💬</a>
+  </nav>
 
   <!-- 页脚 -->
   <footer class="site-footer">
