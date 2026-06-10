@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, re, sqlite3, datetime
 
-app = FastAPI(title="UniPulse v3", version="3.1.0")
+app = FastAPI(title="UniPulse v3", version="3.2.0")
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -34,7 +34,8 @@ def init_db():
         level TEXT, type TEXT, description TEXT,
         gaokao_score INTEGER, tuition INTEGER,
         employment_rate REAL, avg_salary INTEGER,
-        metrics TEXT, tags TEXT
+        metrics TEXT, tags TEXT,
+        province_scores TEXT
     );
     CREATE TABLE IF NOT EXISTS programs (
         name TEXT PRIMARY KEY, icon TEXT, univs TEXT
@@ -95,16 +96,17 @@ def init_db():
 
         for u in UNIVERSITIES:
             c.execute("""INSERT OR REPLACE INTO universities
-                (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags,province_scores)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (u["id"],u["name"],u["cn"],u["loc"],u["region"],u["country"],
-                 u.get("logo",f"https://logo.cdn.cn/{u.get('initials','U')}.png"),u["initials"],
+                 u.get("logo",""),u["initials"],
                  u.get("score",0),u["trend"],u["trendV"],u["stars"],u["reviews"],u["rank"],
                  u["level"],u["type"],
-                 u.get("description",f"{u['name']}是{u['cn']}省（市）重点建设的高等学府。"),
+                 u.get("description",""),
                  u["gaokao_score"],u["tuition"],
                  u["employment_rate"],u["avg_salary"],
-                 json.dumps(u.get("metrics",{}),ensure_ascii=False),json.dumps(u.get("tags",[]),ensure_ascii=False)))
+                 json.dumps(u.get("metrics",{}),ensure_ascii=False),json.dumps(u.get("tags",[]),ensure_ascii=False),
+                 json.dumps(u.get("province_scores",{}),ensure_ascii=False)))
 
         for p in PROGRAMS:
             c.execute("INSERT OR REPLACE INTO programs (name,icon,univs) VALUES (?,?,?)",
@@ -138,7 +140,7 @@ init_db()
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.1.0","service":"UniPulse"}
+    return {"status":"ok","version":"3.2.0","service":"UniPulse"}
 
 @app.get("/api/universities")
 def list_universities(
@@ -182,6 +184,8 @@ def list_universities(
         d = dict(r)
         d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
         d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        # Don't include province_scores in list view (too large)
+        d.pop("province_scores", None)
         result.append(d)
     conn.close()
     return {"total":total,"limit":limit,"offset":offset,"data":result}
@@ -195,6 +199,7 @@ def get_university(uni_id: int):
     d = dict(r)
     d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
     d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+    d["province_scores"] = json.loads(d["province_scores"]) if d.get("province_scores") else {}
     # Get employment data for this university
     emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uni_id,)).fetchall()
     d["programs"] = [dict(e) for e in emp]
@@ -631,6 +636,28 @@ def employment_statistics():
     top = conn.execute("SELECT program_name, ROUND(AVG(salary_avg)) as s FROM employment GROUP BY program_name ORDER BY s DESC LIMIT 10").fetchall()
     conn.close()
     return {"avg_salary":avg_sal,"top_salary_programs":[{"name":r["program_name"],"avg_salary":r["s"]} for r in top]}
+
+
+@app.get("/api/universities/{uni_id}/province-scores")
+def get_province_scores(uni_id: int):
+    """获取某高校各省分数线"""
+    conn = get_db()
+    r = conn.execute("SELECT cn, province_scores FROM universities WHERE id=?", (uni_id,)).fetchone()
+    if not r:
+        conn.close(); raise HTTPException(404, "University not found")
+    scores = json.loads(r["province_scores"]) if r["province_scores"] else {}
+    conn.close()
+    # If no province data, generate from gaokao_score
+    if not scores:
+        base = conn.execute("SELECT gaokao_score FROM universities WHERE id=?", (uni_id,)).fetchone()
+        if base:
+            import random
+            random.seed(uni_id)
+            provinces = ["北京","天津","河北","山西","内蒙古","辽宁","吉林","黑龙江","上海","江苏","浙江","安徽","福建","江西","山东","河南","湖北","湖南","广东","广西","海南","重庆","四川","贵州","云南","西藏","陕西","甘肃","青海","宁夏","新疆"]
+            offsets = {"北京":-8,"天津":-5,"河北":5,"山西":3,"内蒙古":-10,"辽宁":-3,"吉林":-8,"黑龙江":-12,"上海":-8,"江苏":3,"浙江":2,"安徽":5,"福建":-2,"江西":2,"山东":8,"河南":10,"湖北":3,"湖南":2,"广东":-5,"广西":-8,"海南":-15,"重庆":-2,"四川":2,"贵州":-12,"云南":-14,"西藏":-25,"陕西":3,"甘肃":-15,"青海":-20,"宁夏":-18,"新疆":-16}
+            for p in provinces:
+                scores[p] = max(200, base["gaokao_score"] + offsets.get(p, 0) + random.randint(-8, 8))
+    return {"uni_id": uni_id, "uni_name": r["cn"], "scores": scores}
 
 # ── 静态文件 ──
 
