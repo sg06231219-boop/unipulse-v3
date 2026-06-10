@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UniPulse 管理后台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#060b1a;--bg2:#0c1225;--bg3:#131b30;--surface:#111c35;--surface2:#182547;--border:#1e3055;--text:#e8eaf0;--text2:#8a94a8;--text3:#5c6478;--accent:#6366f1;--green:#00d68f;--red:#ff4d6a;--yellow:#ffbe0b;--radius:12px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.nav{display:flex;align-items:center;gap:1.5rem;padding:1rem 2rem;background:var(--bg2);border-bottom:1px solid var(--border)}
+.nav h1{font-size:1.2rem;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.nav a{color:var(--text2);text-decoration:none;font-size:.88rem;transition:color .2s}
+.nav a:hover,.nav a.active{color:var(--accent)}
+.container{max-width:1200px;margin:2rem auto;padding:0 2rem}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:2rem}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem;text-align:center}
+.stat-card .val{font-size:2rem;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stat-card .label{font-size:.82rem;color:var(--text3);margin-top:.3rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.5rem}
+.card h2{font-size:1.1rem;font-weight:700;margin-bottom:1rem;color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th,td{padding:.6rem .8rem;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--text2);font-weight:600;font-size:.78rem;text-transform:uppercase}
+tr:hover{background:var(--surface2)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
+.badge-green{background:rgba(0,214,143,.15);color:var(--green)}
+.badge-red{background:rgba(255,77,106,.15);color:var(--red)}
+.badge-blue{background:rgba(99,102,241,.15);color:var(--accent)}
+.badge-yellow{background:rgba(255,190,11,.15);color:var(--yellow)}
+.btn{padding:.4rem 1rem;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:.82rem;transition:all .2s}
+.btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-danger{border-color:var(--red);color:var(--red)}
+.btn-danger:hover{background:var(--red);color:#fff}
+.form-row{display:flex;gap:.8rem;margin-bottom:.8rem;align-items:center}
+.form-row input,.form-row select,.form-row textarea{flex:1;padding:.5rem .8rem;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.85rem}
+.form-row textarea{min-height:80px;resize:vertical}
+.actions{display:flex;gap:.5rem}
+.tab-bar{display:flex;gap:.5rem;margin-bottom:1.5rem;flex-wrap:wrap}
+.tab-bar button{padding:.5rem 1.2rem;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;transition:all .2s}
+.tab-bar button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.empty{color:var(--text3);text-align:center;padding:3rem;font-size:.9rem}
+.loading{text-align:center;padding:3rem;color:var(--text2)}
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}
+canvas{width:100%!important;height:250px!important}
+@media(max-width:768px){.charts-row{grid-template-columns:1fr}.stats-grid{grid-template-columns:1fr 1fr}.container{padding:0 1rem}}
+</style>
+</head>
+<body>
+<div class="nav">
+  <h1>🎓 UniPulse Admin</h1>
+  <a href="#" data-tab="overview" class="active">概览</a>
+  <a href="#" data-tab="universities">高校管理</a>
+  <a href="#" data-tab="forum">论坛管理</a>
+  <a href="#" data-tab="analytics">访问统计</a>
+  <a href="#" data-tab="settings">系统设置</a>
+  <span style="margin-left:auto;font-size:.78rem;color:var(--text3)">v3.2.0</span>
+</div>
+<div class="container" id="content">
+  <div class="loading">加载中...</div>
+</div>
+<script>
+const API='/api';
+let currentTab='overview';
+
+document.addEventListener('click',e=>{
+  const tab=e.target.closest('[data-tab]');
+  if(tab){e.preventDefault();switchTab(tab.dataset.tab)}
+});
+
+function switchTab(tab){
+  currentTab=tab;
+  document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.tab===tab));
+  if(tab==='overview')loadOverview();
+  else if(tab==='universities')loadUniversities();
+  else if(tab==='forum')loadForumAdmin();
+  else if(tab==='analytics')loadAnalytics();
+  else if(tab==='settings')loadSettings();
+}
+
+async function api(path){
+  const r=await fetch(API+path);
+  if(!r.ok)throw new Error(r.status);
+  return r.json();
+}
+async function apiDel(path){return fetch(API+path,{method:'DELETE'}).then(r=>r.json())}
+async function apiPut(path,body){return fetch(API+path,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json())}
+
+async function loadOverview(){
+  const s=await api('/admin/stats');
+  const stats=await api('/stats');
+  const c=document.getElementById('content');
+  c.innerHTML=`
+  <div class="stats-grid">
+    <div class="stat-card"><div class="val">${s.universities}</div><div class="label">高校总数</div></div>
+    <div class="stat-card"><div class="val">${stats.levels['985']}</div><div class="label">985高校</div></div>
+    <div class="stat-card"><div class="val">${stats.levels['211']}</div><div class="label">211高校</div></div>
+    <div class="stat-card"><div class="val">${s.employment_records}</div><div class="label">就业记录</div></div>
+    <div class="stat-card"><div class="val">${s.forum_posts}</div><div class="label">论坛帖子</div></div>
+    <div class="stat-card"><div class="val">${s.visits}</div><div class="label">总访问量</div></div>
+  </div>
+  <div class="charts-row">
+    <div class="card"><h2>层次分布</h2><canvas id="chartLevel"></canvas></div>
+    <div class="card"><h2>地区分布</h2><canvas id="chartRegion"></canvas></div>
+  </div>
+  <div class="card"><h2>最近论坛帖子</h2><div id="recentPosts"></div></div>`;
+  // Level chart
+  const lv=await api('/level-stats');
+  drawBar('chartLevel',lv.map(l=>l.level),lv.map(l=>l.count));
+  // Region chart
+  const rg=await api('/regions');
+  drawBar('chartRegion',rg.map(r=>r.region),rg.map(r=>r.count));
+  // Recent posts
+  const posts=await api('/forum/posts?limit=5');
+  document.getElementById('recentPosts').innerHTML=`<table><thead><tr><th>标题</th><th>分类</th><th>作者</th><th>浏览</th><th>赞</th></tr></thead><tbody>${posts.data.map(p=>`<tr><td>${esc(p.title)}</td><td><span class="badge badge-blue">${p.category}</span></td><td>${p.author}</td><td>${p.views}</td><td>${p.likes}</td></tr>`).join('')}</tbody></table>`;
+}
+
+async function loadUniversities(){
+  const c=document.getElementById('content');
+  c.innerHTML=`
+  <div class="tab-bar">
+    <button class="active" onclick="loadUniList(1)">全部</button>
+    <button onclick="loadUniList(1,'985')">985</button>
+    <button onclick="loadUniList(1,'211')">211</button>
+    <button onclick="loadUniList(1,'普通一本')">一本</button>
+    <button onclick="loadUniList(1,'普通二本')">二本</button>
+    <button onclick="loadUniList(1,'民办')">民办</button>
+  </div>
+  <div class="form-row" style="margin-bottom:1rem">
+    <input type="text" id="uniSearchAdmin" placeholder="搜索高校...">
+    <button class="btn" onclick="loadUniList(1)">搜索</button>
+  </div>
+  <div class="card"><div id="uniTable"></div></div>
+  <div id="uniPag"></div>`;
+  loadUniList(1);
+}
+
+async function loadUniList(page,level){
+  const q=document.getElementById('uniSearchAdmin')?.value||'';
+  let url=`/universities?limit=20&offset=${(page-1)*20}&sort=rank&order=asc`;
+  if(q)url+=`&q=${encodeURIComponent(q)}`;
+  if(level)url+=`&level=${encodeURIComponent(level)}`;
+  const r=await api(url);
+  document.getElementById('uniTable').innerHTML=`<table><thead><tr><th>ID</th><th>名称</th><th>所在地</th><th>层次</th><th>类型</th><th>分数线</th><th>就业率</th><th>操作</th></tr></thead><tbody>${r.data.map(u=>`<tr>
+    <td>${u.id}</td><td><strong>${esc(u.cn)}</strong><br><span style="font-size:.75rem;color:var(--text3)">${esc(u.name)}</span></td>
+    <td>${u.loc}</td><td><span class="badge ${u.level.includes('985')?'badge-yellow':u.level.includes('211')?'badge-blue':'badge-green'}">${u.level}</span></td>
+    <td>${u.type}</td><td>${u.gaokao_score}</td><td>${u.employment_rate}%</td>
+    <td class="actions"><button class="btn" onclick="editUni(${u.id})">编辑</button><button class="btn btn-danger" onclick="delUni(${u.id})">删除</button></td>
+  </tr>`).join('')}</tbody></table>
+  <div style="color:var(--text3);font-size:.8rem;margin-top:.5rem">共 ${r.total} 所</div>`;
+}
+
+async function loadForumAdmin(){
+  const r=await api('/forum/posts?limit=30');
+  const c=document.getElementById('content');
+  c.innerHTML=`
+  <div class="card"><h2>论坛帖子管理</h2>
+  <table><thead><tr><th>ID</th><th>标题</th><th>分类</th><th>作者</th><th>浏览</th><th>赞</th><th>评论</th><th>操作</th></tr></thead><tbody>${r.data.map(p=>`<tr>
+    <td>${p.id}</td><td>${esc(p.title)}</td><td><span class="badge badge-blue">${p.category}</span></td><td>${p.author}</td><td>${p.views}</td><td>${p.likes}</td><td>${p.comment_count}</td>
+    <td class="actions"><button class="btn btn-danger" onclick="delPost(${p.id})">删除</button></td>
+  </tr>`).join('')}</tbody></table></div>`;
+}
+
+async function loadAnalytics(){
+  const s=await api('/admin/stats');
+  const sd=await api('/score-distribution');
+  const c=document.getElementById('content');
+  c.innerHTML=`
+  <div class="stats-grid">
+    <div class="stat-card"><div class="val">${s.visits}</div><div class="label">总PV</div></div>
+    <div class="stat-card"><div class="val">${s.today_visits||0}</div><div class="label">今日PV</div></div>
+  </div>
+  <div class="card"><h2>分数段分布</h2><canvas id="chartScoreDist"></canvas></div>`;
+  drawBar('chartScoreDist',sd.map(d=>d.range),sd.map(d=>d.count));
+}
+
+function loadSettings(){
+  document.getElementById('content').innerHTML=`
+  <div class="card"><h2>系统信息</h2>
+  <table><tbody>
+    <tr><td>版本</td><td>v3.2.0</td></tr>
+    <tr><td>数据存储</td><td>SQLite（每次部署重置）</td></tr>
+    <tr><td>种子数据</td><td>seed.json</td></tr>
+    <tr><td>AI后端</td><td>智谱 GLM-4-flash</td></tr>
+  </tbody></table></div>
+  <div class="card"><h2>快捷操作</h2>
+  <div class="actions">
+    <button class="btn" onclick="api('/admin/reseed').then(()=>alert('已重新灌入数据'))">🔄 重新灌入数据</button>
+    <button class="btn btn-danger" onclick="if(confirm('确认清空论坛？'))apiDel('/admin/forum-purge').then(()=>alert('已清空'))">🗑️ 清空论坛</button>
+  </div></div>`;
+}
+
+async function editUni(id){
+  const u=await api('/universities/'+id);
+  const ps=u.province_scores||{};
+  const provinces=['北京','天津','河北','山西','内蒙古','辽宁','吉林','黑龙江','上海','江苏','浙江','安徽','福建','江西','山东','河南','湖北','湖南','广东','广西','海南','重庆','四川','贵州','云南','西藏','陕西','甘肃','青海','宁夏','新疆'];
+  document.getElementById('content').innerHTML=`
+  <div class="card"><h2>编辑：${esc(u.cn)}</h2>
+  <form id="editForm">
+    <div class="form-row"><label style="width:80px">简称</label><input id="ef_cn" value="${esc(u.cn)}"></div>
+    <div class="form-row"><label style="width:80px">全称</label><input id="ef_name" value="${esc(u.name)}"></div>
+    <div class="form-row"><label style="width:80px">类型</label><select id="ef_type"><option ${u.type==='综合'?'selected':''}>综合</option><option ${u.type==='理工'?'selected':''}>理工</option><option ${u.type==='师范'?'selected':''}>师范</option><option ${u.type==='农林'?'selected':''}>农林</option><option ${u.type==='医药'?'selected':''}>医药</option><option ${u.type==='财经'?'selected':''}>财经</option><option ${u.type==='政法'?'selected':''}>政法</option><option ${u.type==='语言'?'selected':''}>语言</option><option ${u.type==='艺术'?'selected':''}>艺术</option></select></div>
+    <div class="form-row"><label style="width:80px">描述</label><textarea id="ef_desc">${esc(u.description||'')}</textarea></div>
+    <h3 style="margin:1rem 0 .5rem">各省分数线</h3>
+    ${provinces.map(p=>`<div class="form-row"><label style="width:80px">${p}</label><input id="ef_ps_${p}" type="number" value="${ps[p]||u.gaokao_score||0}" style="width:100px"></div>`).join('')}
+    <div class="actions" style="margin-top:1rem"><button type="submit" class="btn">保存</button><button type="button" class="btn" onclick="loadUniversities()">取消</button></div>
+  </form></div>`;
+  document.getElementById('editForm').onsubmit=async(e)=>{
+    e.preventDefault();
+    const ps={};
+    provinces.forEach(p=>ps[p]=parseInt(document.getElementById('ef_ps_'+p).value)||0);
+    const body={cn:document.getElementById('ef_cn').value,name:document.getElementById('ef_name').value,type:document.getElementById('ef_type').value,description:document.getElementById('ef_desc').value,province_scores:ps};
+    await apiPut('/admin/universities/'+id,body);
+    alert('保存成功');
+    loadUniversities();
+  };
+}
+
+async function delUni(id){
+  if(!confirm('确认删除？'))return;
+  await apiDel('/admin/universities/'+id);
+  loadUniversities();
+}
+async function delPost(id){
+  if(!confirm('确认删除此帖？'))return;
+  await apiDel('/admin/forum/posts/'+id);
+  loadForumAdmin();
+}
+
+// Simple bar chart using Canvas
+function drawBar(canvasId,labels,values){
+  const canvas=document.getElementById(canvasId);
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.offsetWidth||600,H=250;
+  canvas.width=W*2;canvas.height=H*2;ctx.scale(2,2);
+  const max=Math.max(...values,1);
+  const barW=Math.min(40,(W-60)/labels.length-4);
+  const colors=['#6366f1','#00d68f','#ffbe0b','#ff4d6a','#8b5cf6','#06b6d4','#f97316'];
+  ctx.fillStyle='#0c1225';ctx.fillRect(0,0,W,H);
+  labels.forEach((l,i)=>{
+    const h=(values[i]/max)*(H-50);
+    const x=30+i*(barW+4);
+    const y=H-30-h;
+    ctx.fillStyle=colors[i%colors.length];
+    ctx.fillRect(x,y,barW,h);
+    ctx.fillStyle='#8a94a8';ctx.font='9px sans-serif';ctx.textAlign='center';
+    ctx.fillText(l,x+barW/2,H-12);
+    ctx.fillText(values[i],x+barW/2,y-4);
+  });
+}
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+switchTab('overview');
+</script>
+</body>
+</html>
