@@ -229,56 +229,64 @@ def list_universities(
 
 @app.get("/api/universities/{uni_id}")
 def get_university(uni_id: int):
-    conn = get_db()
     try:
+        conn = get_db()
         r = conn.execute("SELECT * FROM universities WHERE id=?", (uni_id,)).fetchone()
         if not r:
-            raise HTTPException(404,"University not found")
+            conn.close(); raise HTTPException(404,"University not found")
         d = dict(r)
         d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
         d["tags"] = json.loads(d["tags"]) if d["tags"] else []
-        # Get employment data for this university
+        # Get employment data
         try:
             emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uni_id,)).fetchall()
             d["programs"] = [dict(e) for e in emp]
-        except Exception:
+        except Exception as e:
             d["programs"] = []
-        # Check if in any program
+            d["_emp_error"] = str(e)
+        # Program categories
         try:
-            progs = conn.execute("SELECT name, icon FROM programs").fetchall()
+            progs = conn.execute("SELECT name, icon, univs FROM programs").fetchall()
             d["program_categories"] = []
             for p in progs:
-                univs_raw = p["univs"] if "univs" in p.keys() else None
-                if univs_raw:
-                    try:
+                try:
+                    univs_raw = dict(p).get("univs")
+                    if univs_raw:
                         univs = json.loads(univs_raw)
-                        # univs可能是int(数量)或list(名称数组)
                         if isinstance(univs, list) and d["cn"] in univs:
                             d["program_categories"].append({"name":p["name"],"icon":p["icon"]})
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-        except Exception:
+                except Exception:
+                    pass
+        except Exception as e:
             d["program_categories"] = []
-        return d
-    finally:
+            d["_prog_error"] = str(e)
         conn.close()
+        return d
+    except HTTPException:
+        raise
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
 
 @app.get("/api/programs")
 def list_programs():
-    conn = get_db()
-    rows = conn.execute("SELECT name, icon, univs FROM programs").fetchall()
-    result = []
-    for r in rows:
-        univs_raw = r["univs"] if "univs" in r.keys() else None
-        count = 0
-        if univs_raw:
+    try:
+        conn = get_db()
+        rows = conn.execute("SELECT name, icon, univs FROM programs").fetchall()
+        result = []
+        for r in rows:
+            count = 0
             try:
-                univs = json.loads(univs_raw)
-                count = len(univs) if isinstance(univs, list) else int(univs) if isinstance(univs, (int, float)) else 0
-            except (json.JSONDecodeError, TypeError, ValueError):
+                univs_raw = dict(r).get("univs")
+                if univs_raw:
+                    univs = json.loads(univs_raw)
+                    count = len(univs) if isinstance(univs, list) else int(univs) if isinstance(univs, (int, float)) else 0
+            except Exception:
                 count = 0
-        result.append({"name":r["name"],"icon":r["icon"],"count":count})
-    conn.close()
+            result.append({"name":r["name"],"icon":r["icon"],"count":count})
+        conn.close()
+        return result
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
     return result
 
 @app.get("/api/programs/{name}")
