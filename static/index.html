@@ -28,6 +28,7 @@
         <a href="#" data-page="programs" class="nav-link">专业</a>
         <a href="#" data-page="forum" class="nav-link">论坛</a>
         <a href="#" data-page="compare" class="nav-link">对比</a>
+        <a href="#" data-page="wish-table" class="nav-link nav-wish" id="navWish">📋 志愿表</a>
         <a href="#" data-page="ai-report" class="nav-link nav-cta">🤖 AI选校</a>
         <a href="#" data-page="favorites" class="nav-link" id="navFav">⭐</a>
       </div>
@@ -42,6 +43,7 @@
     <a href="#" data-page="programs">📚 专业</a>
     <a href="#" data-page="forum">💬 论坛</a>
     <a href="#" data-page="compare">⚖️ 院校对比</a>
+    <a href="#" data-page="wish-table">📋 志愿表</a>
     <a href="#" data-page="ai-report">🤖 AI选校</a>
     <a href="#" data-page="favorites">⭐ 收藏</a>
   </div>
@@ -73,6 +75,12 @@
         </div>
         <div class="hero-stats" id="heroStats">
           <div class="stat-pill">📊 加载中...</div>
+        </div>
+        <div class="hero-quick-links">
+          <a href="#" class="hero-qlink" data-page="universities">🏫 高校库</a>
+          <a href="#" class="hero-qlink" data-page="wish-table">📋 志愿表</a>
+          <a href="#" class="hero-qlink" data-page="compare">⚖️ 院校对比</a>
+          <a href="#" class="hero-qlink" data-page="forum">💬 论坛</a>
         </div>
       </div>
     </div>
@@ -152,6 +160,13 @@
           <option value="score-desc">分数线↓</option>
           <option value="salary-desc">薪资↓</option>
           <option value="employment-desc">就业率↓</option>
+          <option value="stars-desc">评分↓</option>
+        </select>
+        <select id="filterChance" class="filter-select" style="min-width:90px">
+          <option value="">全部概率</option>
+          <option value="冲">🎯 冲一冲</option>
+          <option value="稳">✅ 稳一稳</option>
+          <option value="保">🛡️ 保一保</option>
         </select>
         <button class="btn btn-sm btn-ghost" id="clearFilters">重置</button>
       </div>
@@ -366,6 +381,81 @@
     </div>
   </section>
 
+  <!-- ===== 志愿表 ===== -->
+  <section class="page hidden" id="page-wish-table">
+    <div class="section" style="max-width:1000px;margin:2rem auto">
+      <div class="page-header">
+        <h1>📋 我的志愿表</h1>
+        <p>像夸克高考一样管理你的冲稳保志愿，最多30个志愿</p>
+      </div>
+      <!-- 操作栏 -->
+      <div class="wish-toolbar">
+        <div class="wish-mode-switch">
+          <button class="wish-mode-btn active" data-mode="group" onclick="switchWishMode('group')">分组视图</button>
+          <button class="wish-mode-btn" data-mode="list" onclick="switchWishMode('list')">列表视图</button>
+        </div>
+        <div class="wish-actions">
+          <button class="btn btn-sm btn-ghost" onclick="exportWishTable('csv')">📥 导出CSV</button>
+          <button class="btn btn-sm btn-ghost" onclick="exportWishTable('json')">📥 导出JSON</button>
+          <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="clearWishTable()">🗑️ 清空</button>
+        </div>
+      </div>
+      <!-- 统计 -->
+      <div class="wish-stats" id="wishStats">
+        <div class="wish-stat-chong">🎯 冲 <strong id="wishChongCount">0</strong></div>
+        <div class="wish-stat-wen">✅ 稳 <strong id="wishWenCount">0</strong></div>
+        <div class="wish-stat-bao">🛡️ 保 <strong id="wishBaoCount">0</strong></div>
+        <div class="wish-stat-total">合计 <strong id="wishTotalCount">0</strong>/30</div>
+      </div>
+      <!-- 分组视图 -->
+      <div id="wishGroupView">
+        <div class="wish-group" id="wishGroupChong">
+          <div class="wish-group-header wish-chong-header">
+            <h3>🎯 冲一冲 <span class="wish-group-desc">分数略高于你的院校</span></h3>
+          </div>
+          <div class="wish-group-items" id="wishItemsChong"></div>
+        </div>
+        <div class="wish-group" id="wishGroupWen">
+          <div class="wish-group-header wish-wen-header">
+            <h3>✅ 稳一稳 <span class="wish-group-desc">分数与你相当</span></h3>
+          </div>
+          <div class="wish-group-items" id="wishItemsWen"></div>
+        </div>
+        <div class="wish-group" id="wishGroupBao">
+          <div class="wish-group-header wish-bao-header">
+            <h3>🛡️ 保一保 <span class="wish-group-desc">分数低于你的院校</span></h3>
+          </div>
+          <div class="wish-group-items" id="wishItemsBao"></div>
+        </div>
+      </div>
+      <!-- 列表视图 -->
+      <div id="wishListView" class="hidden">
+        <div class="wish-list-table" id="wishListTable"></div>
+      </div>
+      <!-- 空状态 -->
+      <div class="empty-state hidden" id="wishEmpty">
+        <div class="empty-icon">📋</div>
+        <h3>志愿表还是空的</h3>
+        <p>输入高考分数后，在高校列表或AI选校中添加志愿</p>
+        <div style="margin-top:1rem;display:flex;gap:0.8rem;justify-content:center">
+          <button class="btn btn-primary" onclick="navigate('universities')">浏览高校</button>
+          <button class="btn btn-ghost" onclick="navigate('ai-report')">AI选校</button>
+        </div>
+      </div>
+      <!-- 提示 -->
+      <div class="wish-tips" id="wishTips">
+        <h4>💡 填报建议</h4>
+        <ul>
+          <li>冲稳保比例建议 <strong>3:5:2</strong> 或 <strong>4:4:2</strong></li>
+          <li>每个志愿注意专业组选科要求是否匹配</li>
+          <li>冲的志愿放在前面，保的志愿不能少</li>
+          <li>建议至少3个保底志愿，避免滑档</li>
+          <li>关注院校招生计划数变化</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== 收藏 ===== -->
   <section class="page hidden" id="page-favorites">
     <div class="section">
@@ -403,7 +493,7 @@
     <a href="#" class="mob-nav-item active" data-page="home">🏠</a>
     <a href="#" class="mob-nav-item" data-page="universities">🏫</a>
     <a href="#" class="mob-nav-item" data-page="ai-report">🤖</a>
-    <a href="#" class="mob-nav-item" data-page="compare">⚖️</a>
+    <a href="#" class="mob-nav-item" data-page="wish-table">📋</a>
     <a href="#" class="mob-nav-item" data-page="forum">💬</a>
   </nav>
 
@@ -420,6 +510,7 @@
         <a href="#" data-page="programs">专业分类</a>
         <a href="#" data-page="ai-report">AI选校</a>
         <a href="#" data-page="compare">院校对比</a>
+        <a href="#" data-page="wish-table">志愿表</a>
         <a href="#" data-page="forum">交流论坛</a>
       </div>
       <div class="footer-links">
