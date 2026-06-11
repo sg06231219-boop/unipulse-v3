@@ -72,7 +72,10 @@ input,select,textarea{font-family:var(--font)}
 .quick-score{padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:0.78rem;cursor:pointer;transition:all var(--transition)}
 .quick-score:hover{border-color:var(--accent);color:var(--accent2);background:rgba(79,143,255,0.08)}
 
-.hero-stats{display:flex;gap:0.8rem;justify-content:center;flex-wrap:wrap;margin-top:1.8rem;animation:fadeInUp 0.6s ease 0.4s both}
+.hero-stats{display:flex;gap:0.8rem;justify-content:center;flex-wrap:wrap;margin-top:1.8rem;animation:fadeInUp 0.6s ease}
+.hero-quick-links{display:flex;gap:0.6rem;justify-content:center;margin-top:1rem;flex-wrap:wrap}content:center;margin-top:1rem;flex-wrap:wrap}
+.hero-qlink{display:inline-block;padding:6px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:20px;color:rgba(255,255,255,0.8);font-size:0.82rem;text-decoration:none;transition:all 0.2s}
+.hero-qlink:hover{background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.3)} 0.4s both}
 .stat-pill{padding:6px 16px;border-radius:16px;background:var(--surface);border:1px solid var(--border);font-size:0.82rem;color:var(--text2)}
 .stat-pill strong{color:var(--text);font-weight:700}
 
@@ -369,3 +372,64 @@ input,select,textarea{font-family:var(--font)}
 /* ── 论坛分类增强 ── */
 .forum-layout .forum-sidebar .tips-list{font-size:0.82rem;color:var(--text3);padding-left:1.2rem}
 .forum-layout .forum-sidebar .tips-list li{margin-bottom:0.3rem}
+
+/* ── 冲稳保角标 ── */
+.uni-card-chance-badge{position:absolute;top:0;left:0;padding:3px 12px;border-radius:0 0 10px 0;font-size:0.72rem;font-weight:800;z-index:2;letter-spacing:1px}
+.uni-card-chance-badge.chance-chong{background:var(--chong);color:#fff}
+.uni-card-chance-badge.chance-wen{background:var(--wen);color:#fff}
+.uni-card-chance-badge.chance-bao{background:var(--bao);color:#fff}
+.uni-card-chance-badge.chance-none{background:var(--text3);color:#fff}
+
+/* ── 高校卡片操作栏 ── */
+.uni-card-actions{display:flex;gap:0.4rem;margin-top:0.6rem;padding-top:0.6rem;border-top:1px solid var(--border)}
+.btn-xs{padding:3px 8px;font-size:0.72rem;border-radius:6px}
+
+/* ── 导航志愿表角标 ── */
+.nav-wish{position:relative}
+
+/* ── 志愿表页面 ── */
+.wish-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.8rem}
+.wish-mode-switch{display:flex;gap:0;background:var(--surface);border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.wish-mode-btn{padding:6px 16px;background:none;border:none;color:var(--text3);font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.2s}
+.wish-mode-btn.active{background:var(--accent);color:#fff}
+.wish-mode-btn:hover:not(.active){color:var(--text2);background:var(--surface2)}
+.wish-actions{display:flex;gap:0.5rem}
+
+.wish-stats{display:flex;gap:1rem;justify-content:center;margin-bottom:1.5rem;padding:1rem;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border)}
+.wish-stats>div{font-size:0.9rem;color:var(--text2)}
+.wish-stats strong{font-size:1.1rem;font-weight:800}
+.wish-stat-chong strong{color:var(--chong)}
+.wish-stat-wen strong{color:var(--wen)}
+.wish-stat-bao strong{color:var(--bao)}
+.wish-stat-total strong{color:var(--accent2)}
+
+.wish-group{margin-bottom:1.5rem}
+.wish-group-header{padding:0.8rem 1.2rem;border-radius:var(--radius-sm) var(--radius-sm) 0 0;margin-bottom:0}
+.wish-group-header h3{font-size:1rem;font-weight:700;margin:0}
+.wish-group-header .wish-group-desc{font-size:0.78rem;font-weight:400;color:var(--text3);margin-left:0.5rem}
+.wish-chong-header{background:rgba(255,71,87,0.1);border-left:4px solid var(--chong)}
+.wish-chong-header h3{color:var(--chong)}
+.wish-wen-header{background:rgba(0,214,143,0.1);border-left:4px solid var(--wen)}
+.wish-wen-header h3{color:var(--wen)}
+.wish-bao-header{background:rgba(79,143,255,0.1);border-left:4px solid var(--bao)}
+.wish-bao-header h3{color:var(--bao)}
+
+.wish-group-items{border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);overflow:hidden}
+.wish-item{display:flex;align-items:center;gap:0.8rem;padding:0.8rem 1rem;border-bottom:1px solid var(--border);transition:background 0.15s}
+.wish-item:last-child{border-bottom:none}
+.wish-item:hover{background:var(--surface2)}
+.wish-item-order{width:24px;height:24px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:var(--text3);flex-shrink:0}
+.wish-item-info{flex:1;min-width:0}
+.wish-item-name{font-weight:700;font-size:0.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wish-item-meta{font-size:0.78rem;color:var(--text3)}
+.wish-item-btns{display:flex;gap:0.3rem;flex-shrink:0}
+.wish-empty-group{padding:1.5rem;text-align:center;color:var(--text3);font-size:0.85rem}
+
+.wish-list-table{overflow-x:auto}
+
+.wish-tips{margin-top:1.5rem;padding:1.2rem;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border)}
+.wish-tips h4{font-size:0.95rem;font-weight:700;margin-bottom:0.6rem;color:var(--accent2)}
+.wish-tips ul{list-style:none;padding-left:0}
+.wish-tips li{padding:0.3rem 0 0.3rem 1.2rem;position:relative;font-size:0.85rem;color:var(--text2)}
+.wish-tips li::before{content:'•';position:absolute;left:0;color:var(--accent)}
+.wish-tips li strong{color:var(--text)}
