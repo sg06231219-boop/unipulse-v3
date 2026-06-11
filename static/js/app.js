@@ -10,6 +10,7 @@ let currentUniPage = 1;
 let currentForumPage = 1;
 let userScore = parseInt(localStorage.getItem('unipulse_score')) || 0;
 let compareList = JSON.parse(localStorage.getItem('unipulse_compare') || '[]');
+let wishList = JSON.parse(localStorage.getItem('unipulse_wish') || '[]'); // [{id, name, score, group}]
 
 // ── 路由 ──
 function navigate(page, params = {}) {
@@ -30,6 +31,7 @@ function navigate(page, params = {}) {
   else if (page === 'forum') loadForum(1);
   else if (page === 'post-detail') loadPostDetail(params.id);
   else if (page === 'favorites') loadFavorites();
+  else if (page === 'wish-table') loadWishTable();
   else if (page === 'search') performSearch(params.q || '');
 }
 
@@ -66,9 +68,13 @@ function getLevelClass(level) {
   return 'level-other';
 }
 function getChanceInfo(gap) {
-  if (gap >= 20) return {text:'较稳', cls:'chance-wen', group:'稳'};
-  if (gap >= 0) return {text:'可冲', cls:'chance-chong', group:'冲'};
-  if (gap >= -20) return {text:'保底', cls:'chance-bao', group:'保'};
+  if (gap >= 30) return {text:'稳上', cls:'chance-bao', group:'保'};
+  if (gap >= 20) return {text:'较稳', cls:'chance-bao', group:'保'};
+  if (gap >= 10) return {text:'有把握', cls:'chance-wen', group:'稳'};
+  if (gap >= 0) return {text:'可冲', cls:'chance-wen', group:'稳'};
+  if (gap >= -10) return {text:'有风险', cls:'chance-chong', group:'冲'};
+  if (gap >= -20) return {text:'较难', cls:'chance-chong', group:'冲'};
+  if (gap >= -30) return {text:'困难', cls:'chance-none', group:'冲'};
   return {text:'差距大', cls:'chance-none', group:''};
 }
 function formatSalary(v) { return v >= 10000 ? (v/1000).toFixed(0)+'K' : v; }
@@ -152,8 +158,10 @@ function renderUniCard(u, showChance = false) {
   const gap = userScore ? userScore - u.gaokao_score : null;
   const chance = gap !== null ? getChanceInfo(gap) : null;
   const isFav = false;
+  const isInWish = wishList.some(w => w.id === u.id);
   return `<div class="uni-card" data-page="uni-detail" data-id="${u.id}">
     <button class="uni-card-fav ${isFav?'active':''}" onclick="event.stopPropagation();toggleFav(${u.id},this)">⭐</button>
+    ${chance ? `<div class="uni-card-chance-badge ${chance.cls}">${chance.text}</div>` : ''}
     <div class="uni-card-header">
       <div class="uni-card-name">${esc(u.cn)}</div>
       <span class="uni-card-level ${getLevelClass(u.level)}">${u.level.split('/')[0]}</span>
@@ -169,6 +177,10 @@ function renderUniCard(u, showChance = false) {
       <span class="uni-stat">就业率 <strong>${u.employment_rate}%</strong></span>
       <span class="uni-stat">起薪 <strong>${formatSalary(u.avg_salary)}</strong></span>
       <span class="uni-stat">⭐${u.stars}</span>
+    </div>
+    <div class="uni-card-actions">
+      <button class="btn btn-xs ${isInWish?'btn-primary':'btn-ghost'}" onclick="event.stopPropagation();addToWish(${u.id},'${esc(u.cn)}',${u.gaokao_score})">${isInWish?'✅ 已加志愿':'+志愿表'}</button>
+      <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();addToCompare(${u.id},'${esc(u.cn)}',${u.gaokao_score})">⚖️</button>
     </div>
   </div>`;
 }
@@ -191,9 +203,18 @@ async function loadUniversities(page = 1) {
   if (type_) params.set('type', type_);
   try {
     const r = await apiGet('/universities?' + params);
-    $('uniResultsInfo').textContent = `共 ${r.total} 所高校`;
-    $('uniGrid').innerHTML = r.data.map(u => renderUniCard(u, true)).join('');
-    renderPagination('uniPagination', r.total, 20, page, p => loadUniversities(p));
+    let data = r.data;
+    // Client-side chance filter
+    if (chanceFilter && userScore) {
+      data = data.filter(u => {
+        const gap = userScore - u.gaokao_score;
+        const info = getChanceInfo(gap);
+        return info.group === chanceFilter;
+      });
+    }
+    $('uniResultsInfo').textContent = `共 ${chanceFilter && userScore ? data.length : r.total} 所高校`;
+    $('uniGrid').innerHTML = data.map(u => renderUniCard(u, true)).join('');
+    renderPagination('uniPagination', chanceFilter && userScore ? data.length : r.total, 20, page, p => loadUniversities(p));
   } catch(e) { toast('加载失败'); }
 }
 
@@ -578,8 +599,9 @@ document.addEventListener('DOMContentLoaded', () => {
   $('filterLevel')?.addEventListener('change', () => loadUniversities(1));
   $('filterType')?.addEventListener('change', () => loadUniversities(1));
   $('sortUni')?.addEventListener('change', () => loadUniversities(1));
+  $('filterChance')?.addEventListener('change', () => loadUniversities(1));
   $('clearFilters')?.addEventListener('click', () => {
-    $('uniSearch').value = ''; $('filterRegion').value = ''; $('filterLevel').value = ''; $('filterType').value = '';
+    $('uniSearch').value = ''; $('filterRegion').value = ''; $('filterLevel').value = ''; $('filterType').value = ''; $('filterChance').value = '';
     loadUniversities(1);
   });
 
@@ -623,3 +645,185 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+// ══════════════════════════════════════
+// ── 志愿表功能 ──
+// ══════════════════════════════════════
+
+function addToWish(uniId, name, score) {
+  if (wishList.length >= 30) { toast('志愿表最多30个'); return; }
+  if (wishList.some(w => w.id === uniId)) { toast('已在志愿表中'); return; }
+  // 自动判断冲稳保分组
+  const gap = userScore ? userScore - score : 0;
+  let group = '稳';
+  if (gap < 0) group = '冲';
+  else if (gap >= 20) group = '保';
+  wishList.push({ id: uniId, name, score, group });
+  localStorage.setItem('unipulse_wish', JSON.stringify(wishList));
+  // 同步到服务端
+  apiPost('/wish-table/add', { session_id: sessionId, uni_id: uniId, group }).catch(() => {});
+  toast(`已添加到志愿表 [${group}]`);
+  // 刷新当前页的卡片状态
+  if (currentPage === 'universities') loadUniversities(currentUniPage);
+  else if (currentPage === 'wish-table') loadWishTable();
+  updateWishBadge();
+}
+
+function removeFromWish(uniId) {
+  wishList = wishList.filter(w => w.id !== uniId);
+  localStorage.setItem('unipulse_wish', JSON.stringify(wishList));
+  apiGet(`/wish-table/remove?session_id=${sessionId}&uni_id=${uniId}`).catch(() => {});
+  loadWishTable();
+  updateWishBadge();
+}
+
+function moveWishGroup(uniId, newGroup) {
+  const item = wishList.find(w => w.id === uniId);
+  if (item) {
+    item.group = newGroup;
+    localStorage.setItem('unipulse_wish', JSON.stringify(wishList));
+    loadWishTable();
+  }
+}
+
+function clearWishTable() {
+  if (!confirm('确定清空志愿表？')) return;
+  wishList = [];
+  localStorage.setItem('unipulse_wish', JSON.stringify(wishList));
+  apiGet(`/wish-table/clear?session_id=${sessionId}`).catch(() => {});
+  loadWishTable();
+  updateWishBadge();
+}
+
+function updateWishBadge() {
+  const nav = $('navWish');
+  if (nav) {
+    const cnt = wishList.length;
+    nav.textContent = cnt > 0 ? `📋 志愿表(${cnt})` : '📋 志愿表';
+  }
+}
+
+async function loadWishTable() {
+  // 尝试从服务端同步
+  try {
+    const serverData = await apiGet('/wish-table/' + sessionId);
+    // Merge: server data as source of truth if available
+    if (serverData.冲?.length || serverData.稳?.length || serverData.保?.length) {
+      wishList = [];
+      ['冲','稳','保'].forEach(g => {
+        (serverData[g]||[]).forEach(u => {
+          if (!wishList.some(w => w.id === u.id)) {
+            wishList.push({ id: u.id, name: u.cn, score: u.gaokao_score, group: g });
+          }
+        });
+      });
+      localStorage.setItem('unipulse_wish', JSON.stringify(wishList));
+    }
+  } catch(e) {}
+
+  const groups = { '冲': [], '稳': [], '保': [] };
+  wishList.forEach(w => { if (groups[w.group]) groups[w.group].push(w); });
+
+  const total = wishList.length;
+  $('wishChongCount').textContent = groups['冲'].length;
+  $('wishWenCount').textContent = groups['稳'].length;
+  $('wishBaoCount').textContent = groups['保'].length;
+  $('wishTotalCount').textContent = total;
+
+  const isEmpty = total === 0;
+  $('wishEmpty')?.classList.toggle('hidden', !isEmpty);
+  $('wishGroupView')?.classList.toggle('hidden', isEmpty);
+  $('wishTips')?.classList.toggle('hidden', isEmpty);
+
+  // Render groups
+  ['冲','稳','保'].forEach(g => {
+    const container = $('wishItems' + (g==='冲'?'Chong':g==='稳'?'Wen':'Bao'));
+    if (!container) return;
+    container.innerHTML = groups[g].map((w, i) => `
+      <div class="wish-item">
+        <span class="wish-item-order">${i+1}</span>
+        <div class="wish-item-info">
+          <div class="wish-item-name">${esc(w.name)}</div>
+          <div class="wish-item-meta">${w.score}分 · ${g}组</div>
+        </div>
+        <div class="wish-item-btns">
+          ${g!=='冲'?'<button class="btn btn-xs btn-ghost" onclick="moveWishGroup('+w.id+',\'冲\')" title="移到冲组">🎯</button>':''}
+          ${g!=='稳'?'<button class="btn btn-xs btn-ghost" onclick="moveWishGroup('+w.id+',\'稳\')" title="移到稳组">✅</button>':''}
+          ${g!=='保'?'<button class="btn btn-xs btn-ghost" onclick="moveWishGroup('+w.id+',\'保\')" title="移到保组">🛡️</button>':''}
+          <button class="btn btn-xs btn-ghost" onclick="navigate('uni-detail',{id:${w.id}})" title="查看详情">👁️</button>
+          <button class="btn btn-xs btn-ghost" style="color:var(--red)" onclick="removeFromWish(${w.id})" title="移除">✕</button>
+        </div>
+      </div>`).join('') || '<div class="wish-empty-group">点击高校卡片上的 +志愿表 添加</div>';
+  });
+
+  // Render list view
+  renderWishListView(groups);
+  updateWishBadge();
+}
+
+function renderWishListView(groups) {
+  const all = [];
+  ['冲','稳','保'].forEach(g => {
+    groups[g].forEach((w, i) => all.push({...w, order: all.length + 1}));
+  });
+  const table = $('wishListTable');
+  if (!table) return;
+  if (all.length === 0) { table.innerHTML = ''; return; }
+  table.innerHTML = `<table class="emp-table">
+    <thead><tr><th>序号</th><th>分组</th><th>院校</th><th>参考线</th><th>与我的差距</th><th>操作</th></tr></thead>
+    <tbody>${all.map((w,i) => {
+      const gap = userScore ? userScore - w.score : null;
+      return `<tr>
+        <td>${i+1}</td>
+        <td><span class="uni-card-chance ${w.group==='冲'?'chance-chong':w.group==='稳'?'chance-wen':'chance-bao'}">${w.group}</span></td>
+        <td><strong>${esc(w.name)}</strong></td>
+        <td>${w.score}分</td>
+        <td>${gap!==null?(gap>=0?'+':'')+gap+'分':'-'}</td>
+        <td><button class="btn btn-xs btn-ghost" style="color:var(--red)" onclick="removeFromWish(${w.id})">移除</button></td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+function switchWishMode(mode) {
+  document.querySelectorAll('.wish-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  $('wishGroupView')?.classList.toggle('hidden', mode !== 'group');
+  $('wishListView')?.classList.toggle('hidden', mode !== 'list');
+}
+
+async function exportWishTable(format) {
+  try {
+    if (format === 'csv') {
+      const url = `/api/wish-table/${sessionId}/export?format=csv`;
+      const a = document.createElement('a');
+      a.href = url; a.download = 'wish_table.csv'; a.click();
+      toast('CSV导出成功');
+    } else {
+      const data = await apiGet('/wish-table/' + sessionId);
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'wish_table.json'; a.click();
+      toast('JSON导出成功');
+    }
+  } catch(e) { toast('导出失败'); }
+}
+
+// ── AI报告增加"一键加入志愿表" ──
+const _origRenderAiReport = renderAiReport;
+renderAiReport = function(r) {
+  _origRenderAiReport(r);
+  // Add "一键加入志愿表" buttons to each report card
+  document.querySelectorAll('.report-card').forEach(card => {
+    const id = parseInt(card.dataset.id);
+    const nameEl = card.querySelector('.rc-name');
+    const scoreEl = card.querySelector('.rc-score');
+    if (id && nameEl) {
+      const name = nameEl.textContent;
+      const score = parseInt(scoreEl?.textContent) || 0;
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-xs btn-ghost';
+      btn.textContent = '+志愿表';
+      btn.onclick = (e) => { e.stopPropagation(); addToWish(id, name, score); };
+      card.appendChild(btn);
+    }
+  });
+};
