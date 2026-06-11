@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """UniPulse v3 — 高考选校平台 · 后端"""
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import json, os, time, hashlib, re, sqlite3, datetime, random
+import json, os, time, hashlib, re, sqlite3, datetime, random, secrets
 
-app = FastAPI(title="UniPulse v3", version="3.2.0")
+app = FastAPI(title="UniPulse v3", version="3.3.0")
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -72,6 +72,20 @@ def init_db():
         path TEXT, referrer TEXT, user_agent TEXT,
         ip_hash TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS admin_users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT DEFAULT 'admin',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS admin_users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT DEFAULT 'admin',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
     """)
     conn.commit()
 
@@ -132,6 +146,13 @@ def init_db():
                  cm.get("created_at",datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))))
 
         conn.commit()
+
+    # Default admin (password: admin123)
+    admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
+    conn.execute("INSERT OR IGNORE INTO admin_users (username, password_hash, role) VALUES (?,?,?)",
+        ("admin", admin_hash, "admin"))
+    conn.commit()
+
     conn.close()
 
 init_db()
@@ -143,11 +164,90 @@ try:
     conn.close()
 except: pass  # Column already exists
 
+# v3.3.0: Add new columns to existing tables
+_new_columns = {
+    "universities": [
+        ("address", "TEXT DEFAULT ''"),
+        ("phone", "TEXT DEFAULT ''"),
+        ("website", "TEXT DEFAULT ''"),
+        ("founded_year", "INTEGER DEFAULT 0"),
+        ("campus_area", "TEXT DEFAULT ''"),
+        ("student_count", "TEXT DEFAULT ''"),
+        ("faculty_count", "TEXT DEFAULT ''"),
+        ("doctoral_programs", "INTEGER DEFAULT 0"),
+        ("master_programs", "INTEGER DEFAULT 0"),
+        ("national_key_programs", "INTEGER DEFAULT 0"),
+        ("postdoc_stations", "INTEGER DEFAULT 0"),
+        ("academicians", "INTEGER DEFAULT 0"),
+        ("dormitory", "TEXT DEFAULT ''"),
+        ("canteen", "TEXT DEFAULT ''"),
+        ("campus_life", "TEXT DEFAULT ''"),
+        ("notable_alumni", "TEXT DEFAULT ''"),
+        ("motto", "TEXT DEFAULT ''"),
+        ("school_nature", "TEXT DEFAULT ''"),
+        ("affiliation", "TEXT DEFAULT ''"),
+    ],
+    "forum_posts": [
+        ("is_pinned", "INTEGER DEFAULT 0"),
+        ("is_hidden", "INTEGER DEFAULT 0"),
+    ],
+    "forum_comments": [
+        ("is_hidden", "INTEGER DEFAULT 0"),
+    ],
+}
+try:
+    conn = get_db()
+    for table, cols in _new_columns.items():
+        for col_name, col_type in cols:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}")
+            except: pass
+    conn.commit()
+    conn.close()
+except: pass
+
+# ── 管理员认证 ──
+
+# 内存token存储
+_admin_tokens = {}
+
+def verify_admin(token: str = Header(None, alias="Authorization")) -> bool:
+    """验证管理员token"""
+    if not token:
+        raise HTTPException(401, "Missing authorization token")
+    token = token.replace("Bearer ", "")
+    if token not in _admin_tokens:
+        raise HTTPException(401, "Invalid or expired token")
+    return True
+
+@app.post("/admin/login")
+def admin_login(body: dict):
+    """管理员登录"""
+    username = body.get("username", "")
+    password = body.get("password", "")
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    conn = get_db()
+    user = conn.execute("SELECT * FROM admin_users WHERE username=? AND password_hash=?", (username, password_hash)).fetchone()
+    conn.close()
+    if not user:
+        raise HTTPException(401, "用户名或密码错误")
+    token = secrets.token_hex(32)
+    _admin_tokens[token] = {"username": username, "role": user["role"]}
+    return {"token": token, "username": username, "role": user["role"]}
+
+@app.post("/admin/logout")
+def admin_logout(token: str = Header(None, alias="Authorization")):
+    """管理员登出"""
+    if token:
+        token = token.replace("Bearer ", "")
+        _admin_tokens.pop(token, None)
+    return {"status": "logged_out"}
+
 # ── API 路由 ──
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.2.0","service":"UniPulse"}
+    return {"status":"ok","version":"3.3.0","service":"UniPulse"}
 
 @app.get("/api/universities")
 def list_universities(
@@ -284,12 +384,16 @@ def list_employment(
 @app.get("/api/forum/posts")
 def list_posts(category: Optional[str] = None, sort: str = "recent", limit: int = 20, offset: int = 0):
     conn = get_db()
-    where_sql = " WHERE category=?" if category else ""
-    params = [category] if category else []
+    where_parts = ["is_hidden=0"]
+    params = []
+    if category:
+        where_parts.append("category=?")
+        params.append(category)
+    where_sql = " WHERE " + " AND ".join(where_parts)
     sort_map = {"recent":"created_at DESC","hot":"views DESC","liked":"likes DESC"}
     order_sql = sort_map.get(sort, "created_at DESC")
     total = conn.execute(f"SELECT COUNT(*) FROM forum_posts{where_sql}", params).fetchone()[0]
-    rows = conn.execute(f"SELECT * FROM forum_posts{where_sql} ORDER BY {order_sql} LIMIT ? OFFSET ?",
+    rows = conn.execute(f"SELECT * FROM forum_posts{where_sql} ORDER BY is_pinned DESC, {order_sql} LIMIT ? OFFSET ?",
         params + [limit, offset]).fetchall()
     result = []
     for r in rows:
@@ -306,11 +410,13 @@ def get_post(post_id: int):
     r = conn.execute("SELECT * FROM forum_posts WHERE id=?", (post_id,)).fetchone()
     if not r:
         conn.close(); raise HTTPException(404,"Post not found")
+    if r["is_hidden"]:
+        conn.close(); raise HTTPException(404,"Post not found")
     conn.execute("UPDATE forum_posts SET views=views+1 WHERE id=?", (post_id,))
     conn.commit()
     d = dict(r)
     d["tags"] = json.loads(d["tags"]) if d["tags"] else []
-    comments = conn.execute("SELECT * FROM forum_comments WHERE post_id=? ORDER BY created_at", (post_id,)).fetchall()
+    comments = conn.execute("SELECT * FROM forum_comments WHERE post_id=? AND is_hidden=0 ORDER BY created_at", (post_id,)).fetchall()
     d["comments"] = [dict(c) for c in comments]
     conn.close()
     return d
@@ -410,10 +516,10 @@ def search(q: str, limit: int = 20):
     # Search programs
     prog_rows = conn.execute("SELECT name,icon FROM programs WHERE name LIKE ?", (f"%{q}%",)).fetchall()
     programs = [dict(r) for r in prog_rows]
-    # Search posts
+    # Search posts (exclude hidden)
     post_rows = conn.execute("""
         SELECT id,title,category,author,views,likes FROM forum_posts
-        WHERE title LIKE ? OR content LIKE ? LIMIT ?
+        WHERE is_hidden=0 AND (title LIKE ? OR content LIKE ?) LIMIT ?
     """, (f"%{q}%",f"%{q}%",limit)).fetchall()
     posts = [dict(r) for r in post_rows]
     conn.close()
@@ -675,6 +781,78 @@ def get_province_scores(uni_id: int):
         for p in provinces:
             scores[p] = max(200, gaokao_score + offsets.get(p, 0) + random.randint(-8, 8))
     return {"uni_id": uni_id, "uni_name": uni_name, "scores": scores}
+
+
+# ── 论坛管理API（需管理员认证） ──
+
+@app.put("/admin/forum/posts/{post_id}")
+def admin_edit_post(post_id: int, body: dict, auth: bool = Depends(verify_admin)):
+    """编辑帖子"""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM forum_posts WHERE id=?", (post_id,)).fetchone():
+        conn.close(); raise HTTPException(404, "Post not found")
+    sets, params = [], []
+    for k in ["title", "content", "category"]:
+        if k in body:
+            sets.append(f"{k}=?")
+            params.append(body[k])
+    if "tags" in body:
+        sets.append("tags=?")
+        params.append(json.dumps(body["tags"], ensure_ascii=False))
+    if sets:
+        params.append(post_id)
+        conn.execute(f"UPDATE forum_posts SET {','.join(sets)} WHERE id=?", params)
+        conn.commit()
+    conn.close()
+    return {"status": "updated"}
+
+@app.post("/admin/forum/posts/{post_id}/pin")
+def admin_pin_post(post_id: int, body: dict = None, auth: bool = Depends(verify_admin)):
+    """置顶/取消置顶"""
+    conn = get_db()
+    current = conn.execute("SELECT is_pinned FROM forum_posts WHERE id=?", (post_id,)).fetchone()
+    if not current:
+        conn.close(); raise HTTPException(404, "Post not found")
+    new_val = 0 if current["is_pinned"] else 1
+    conn.execute("UPDATE forum_posts SET is_pinned=? WHERE id=?", (new_val, post_id))
+    conn.commit()
+    conn.close()
+    return {"status": "pinned" if new_val else "unpinned"}
+
+@app.post("/admin/forum/posts/{post_id}/hide")
+def admin_hide_post(post_id: int, body: dict = None, auth: bool = Depends(verify_admin)):
+    """隐藏/显示帖子"""
+    conn = get_db()
+    current = conn.execute("SELECT is_hidden FROM forum_posts WHERE id=?", (post_id,)).fetchone()
+    if not current:
+        conn.close(); raise HTTPException(404, "Post not found")
+    new_val = 0 if current["is_hidden"] else 1
+    conn.execute("UPDATE forum_posts SET is_hidden=? WHERE id=?", (new_val, post_id))
+    conn.commit()
+    conn.close()
+    return {"status": "hidden" if new_val else "visible"}
+
+@app.delete("/admin/forum/comments/{comment_id}")
+def admin_delete_comment(comment_id: int, auth: bool = Depends(verify_admin)):
+    """删除评论"""
+    conn = get_db()
+    conn.execute("DELETE FROM forum_comments WHERE id=?", (comment_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
+
+@app.post("/admin/forum/comments/{comment_id}/hide")
+def admin_hide_comment(comment_id: int, body: dict = None, auth: bool = Depends(verify_admin)):
+    """隐藏/显示评论"""
+    conn = get_db()
+    current = conn.execute("SELECT is_hidden FROM forum_comments WHERE id=?", (comment_id,)).fetchone()
+    if not current:
+        conn.close(); raise HTTPException(404, "Comment not found")
+    new_val = 0 if current["is_hidden"] else 1
+    conn.execute("UPDATE forum_comments SET is_hidden=? WHERE id=?", (new_val, comment_id))
+    conn.commit()
+    conn.close()
+    return {"status": "hidden" if new_val else "visible"}
 
 
 # ── 管理员后台 ──
