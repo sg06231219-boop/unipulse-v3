@@ -1,4 +1,4 @@
-﻿/* UniPulse — 高考志愿填报神器 · 前端逻辑 */
+/* UniPulse — 高考志愿填报神器 · 前端逻辑 */
 const API = '/api';
 let sessionId = localStorage.getItem('unipulse_session') || (() => {
   const id = 'sess_' + Math.random().toString(36).slice(2,10);
@@ -9,9 +9,6 @@ let currentPage = 'home';
 let currentUniPage = 1;
 let currentForumPage = 1;
 let userScore = parseInt(localStorage.getItem('unipulse_score')) || 0;
-let allUniversities = [];        // 缓存所有高校，支持本地实时刷新录取概率
-let cardTiltCleanups = [];      // 存储卡片3D倾斜的清理函数
-let heroParticles = null;       // Hero粒子动画实例
 let compareList = JSON.parse(localStorage.getItem('unipulse_compare') || '[]');
 
 // ── 路由 ──
@@ -26,7 +23,7 @@ function navigate(page, params = {}) {
   window.scrollTo({top:0,behavior:'smooth'});
   if (page === 'home') loadHome();
   else if (page === 'universities') loadUniversities(1);
-  else if (page === 'uni-detail') loadUniDetail(params.id);
+  else if (page === 'uni-detail') loadUniDetailV2(params.id);
   else if (page === 'programs') loadProgramsFull();
   else if (page === 'program-detail') loadProgramDetail(params.name);
   else if (page === 'compare') loadCompare();
@@ -83,7 +80,6 @@ function tagType(t) {
 
 // ── 首页 ──
 async function loadHome() {
-  initHeroParticles();
   loadHotUnis();
   loadPrograms();
   loadForumPreview();
@@ -95,18 +91,12 @@ async function loadHeroStats() {
   try {
     const s = await apiGet('/stats');
     $('heroStats').innerHTML = `
-      <div class="stat-pill">🏫 <strong class="count-target" data-target="${s.universities}">0</strong>所高校</div>
-      <div class="stat-pill">💼 <strong class="count-target" data-target="${s.employment_records}">0</strong>条就业数据</div>
-      <div class="stat-pill">💰 平均起薪 <strong class="count-target" data-target="${Math.round(s.avg_salary/100)}">0</strong>K</div>
-      <div class="stat-pill">📊 平均就业率 <strong class="count-target" data-target="${Math.round(s.avg_employment_rate)}">0</strong>%</div>
-      <div class="stat-pill">985 <strong class="count-target" data-target="${s.levels['985']}">0</strong>所 · 211 <strong class="count-target" data-target="${s.levels['211']}">0</strong>所</div>
+      <div class="stat-pill">🏫 <strong>${s.universities}</strong>所高校</div>
+      <div class="stat-pill">💼 <strong>${s.employment_records}</strong>条就业数据</div>
+      <div class="stat-pill">💰 平均起薪 <strong>${(s.avg_salary/1000).toFixed(0)}K</strong></div>
+      <div class="stat-pill">📊 平均就业率 <strong>${s.avg_employment_rate}%</strong></div>
+      <div class="stat-pill">985 <strong>${s.levels['985']}</strong>所 · 211 <strong>${s.levels['211']}</strong>所</div>
     `;
-    setTimeout(() => {
-      document.querySelectorAll('.count-target').forEach(el => {
-        const t = parseInt(el.dataset.target);
-        if (!isNaN(t)) animateCountUp(el, t);
-      });
-    }, 400);
   } catch(e) {}
 }
 
@@ -185,187 +175,6 @@ function renderUniCard(u, showChance = false) {
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-// ── 增强功能 ──
-
-/** 数字递增动画 */
-function animateCountUp(el, target, duration = 800) {
-  const start = parseInt(el.textContent.replace(/[^0-9]/g,'')) || 0;
-  const startTime = performance.now();
-  function step(now) {
-    const progress = Math.min((now - startTime) / duration, 1);
-    const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
-    const current = Math.round(start + (target - start) * eased);
-    el.textContent = current;
-    if (progress < 1) requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
-}
-
-/** 录取概率计算 */
-function calcChance(gap) {
-  if (gap >= 40) return 95;
-  if (gap >= 20) return 80;
-  if (gap >= 10) return 65;
-  if (gap >= 0) return 50;
-  if (gap >= -10) return 35;
-  if (gap >= -20) return 20;
-  return 5;
-}
-
-/** Hero Canvas粒子背景 */
-function initHeroParticles() {
-  const canvas = document.getElementById('heroCanvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  let particles = [], w, h;
-  const COLORS = ['rgba(79,143,255,', 'rgba(125,180,255,', 'rgba(177,140,255,'];
-  const COUNT = 60;
-
-  function resize() {
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.parentElement.getBoundingClientRect();
-    w = rect.width; h = rect.height;
-    canvas.width = w * dpr; canvas.height = h * dpr;
-    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
-    ctx.scale(dpr, dpr);
-  }
-
-  function create() {
-    particles = [];
-    for (let i = 0; i < COUNT; i++) {
-      particles.push({
-        x: Math.random() * w, y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.3 - 0.1,
-        r: Math.random() * 2.5 + 1,
-        color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        alpha: Math.random() * 0.4 + 0.15,
-        phase: Math.random() * Math.PI * 2
-      });
-    }
-  }
-
-  function draw() {
-    ctx.clearRect(0, 0, w, h);
-    particles.forEach(p => {
-      p.x += p.vx; p.y += p.vy;
-      p.alpha = Math.max(0.08, Math.min(0.6, p.alpha + Math.sin(Date.now() * 0.001 + p.phase) * 0.002));
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = p.color + p.alpha + ')'; ctx.fill();
-      // 边缘柔光
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 3, 0, Math.PI * 2);
-      ctx.fillStyle = p.color + '0.04)'; ctx.fill();
-      if (p.x < -10) p.x = w + 10; if (p.x > w + 10) p.x = -10;
-      if (p.y < -10) p.y = h + 10; if (p.y > h + 10) p.y = -10;
-    });
-    // 连接线
-    for (let i = 0; i < particles.length; i++) {
-      for (let j = i + 1; j < particles.length; j++) {
-        const dx = particles[i].x - particles[j].x, dy = particles[i].y - particles[j].y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < 120) {
-          ctx.beginPath(); ctx.moveTo(particles[i].x, particles[i].y); ctx.lineTo(particles[j].x, particles[j].y);
-          ctx.strokeStyle = `rgba(79,143,255,${(1-dist/120)*0.06})`; ctx.lineWidth = 0.5; ctx.stroke();
-        }
-      }
-    }
-    animationFrameId = requestAnimationFrame(draw);
-  }
-
-  if (animationFrameId) cancelAnimationFrame(animationFrameId);
-  resize(); create(); draw();
-  window.addEventListener('resize', () => { resize(); create(); });
-}
-
-/** 卡片3D倾斜效果 */
-function initCardTilt() {
-  cardTiltCleanups.forEach(fn => fn()); cardTiltCleanups = [];
-  document.querySelectorAll('.uni-card').forEach(card => {
-    const onMove = (e) => {
-      const rect = card.getBoundingClientRect();
-      const x = e.clientX - rect.left, y = e.clientY - rect.top;
-      const rx = (y - rect.height/2) / rect.height * -8, ry = (x - rect.width/2) / rect.width * 8;
-      card.style.transform = `translateY(-3px) perspective(800px) rotateX(${rx}deg) rotateY(${ry}deg)`;
-      card.style.setProperty('--mouse-x', (x/rect.width*100)+'%');
-      card.style.setProperty('--mouse-y', (y/rect.height*100)+'%');
-    };
-    const onLeave = () => { card.style.transform = ''; };
-    card.addEventListener('mousemove', onMove);
-    card.addEventListener('mouseleave', onLeave);
-    cardTiltCleanups.push(() => { card.removeEventListener('mousemove', onMove); card.removeEventListener('mouseleave', onLeave); });
-  });
-}
-
-/** 雷达图绘制 */
-function renderRadarChart(unis) {
-  const container = document.getElementById('compareRadar');
-  if (!container || unis.length < 2) return;
-  container.classList.remove('hidden');
-  const canvas = document.getElementById('radarCanvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  const size = Math.min(440, window.innerWidth - 40);
-  canvas.width = size * dpr; canvas.height = size * dpr;
-  canvas.style.width = size + 'px'; canvas.style.height = size + 'px';
-  ctx.scale(dpr, dpr);
-
-  const dims = [
-    {label:'排名', get:u=>1-(u.rank||300)/500},
-    {label:'分数线', get:u=>(u.gaokao_score-400)/350},
-    {label:'就业率', get:u=>(u.employment_rate||70)/100},
-    {label:'薪资', get:u=>(u.avg_salary||5000)/20000},
-    {label:'评分', get:u=>(u.stars||3)/5},
-    {label:'学费', get:u=>1-Math.min((u.tuition||8000)/30000,1)}
-  ];
-  const center = size/2, radius = size*0.33;
-  const angles = dims.map((_,i)=>Math.PI*2*i/dims.length - Math.PI/2);
-  const colors = ['#4f8fff','#00d68f','#ffb800','#ff4757','#b18cff','#00d4ff'];
-
-  ctx.clearRect(0,0,size,size);
-  // 网格
-  [0.2,0.4,0.6,0.8,1].forEach(lv => {
-    ctx.beginPath(); angles.forEach((a,i) => { const x=center+radius*lv*Math.cos(a), y=center+radius*lv*Math.sin(a); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }); ctx.closePath(); ctx.strokeStyle='rgba(79,143,255,0.1)'; ctx.stroke();
-  });
-  // 轴线+标签
-  ctx.strokeStyle='rgba(79,143,255,0.12)';
-  ctx.fillStyle='#8ba0c8'; ctx.font='12px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  angles.forEach((a,i) => { ctx.beginPath(); ctx.moveTo(center,center); ctx.lineTo(center+radius*Math.cos(a),center+radius*Math.sin(a)); ctx.stroke(); ctx.fillText(dims[i].label,center+radius*1.18*Math.cos(a),center+radius*1.18*Math.sin(a)); });
-  // 数据
-  unis.forEach((u,idx) => {
-    const color = colors[idx%colors.length];
-    const vals = dims.map(d=>Math.max(0.05,Math.min(1,d.get(u))));
-    ctx.beginPath(); angles.forEach((a,i) => { const r=radius*vals[i], x=center+r*Math.cos(a), y=center+r*Math.sin(a); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }); ctx.closePath(); ctx.fillStyle=color.replace(')',',0.12)'); ctx.fill(); ctx.strokeStyle=color; ctx.lineWidth=2; ctx.stroke();
-    // 点
-    angles.forEach((a,i) => { const r=radius*vals[i]; ctx.beginPath(); ctx.arc(center+r*Math.cos(a),center+r*Math.sin(a),3,0,Math.PI*2); ctx.fillStyle=color; ctx.fill(); });
-    // 图例
-    const ly = size-10-(unis.length-1-idx)*18; ctx.fillStyle=color; ctx.fillRect(20,ly-5,10,10); ctx.fillStyle='#eaf0ff'; ctx.font='11px system-ui'; ctx.textAlign='left'; ctx.fillText(u.cn||u.name||'',36,ly+3);
-  });
-}
-
-/** 对比搜索下拉 */
-let compareSearchTimer = null;
-function setupCompareSearch() {
-  const input = $('compareSearchInput'), dropdown = $('compareSearchDropdown');
-  if (!input) return;
-  input.addEventListener('input', () => {
-    clearTimeout(compareSearchTimer);
-    const q = input.value.trim();
-    if (q.length < 1) { dropdown.classList.add('hidden'); return; }
-    compareSearchTimer = setTimeout(async () => {
-      try {
-        const r = await apiGet('/universities?q='+encodeURIComponent(q)+'&limit=8');
-        if (!r.data.length) { dropdown.classList.add('hidden'); return; }
-        dropdown.innerHTML = r.data.map(u => {
-          const added = compareList.some(c=>c.id===u.id);
-          return `<div class="compare-search-item ${added?'disabled':''}" onclick="${added?'':`addToCompare(${u.id},'${esc(u.cn)}',${u.gaokao_score});toast('已加入对比')`}">${esc(u.cn)}<span class="item-score">${u.gaokao_score}分 ${added?'✓':''}</span></div>`;
-        }).join('');
-        dropdown.classList.remove('hidden');
-      } catch(e) { dropdown.classList.add('hidden'); }
-    }, 300);
-  });
-  document.addEventListener('click', e => { if (!e.target.closest('.compare-search-wrapper')) dropdown?.classList.add('hidden'); });
-}
-
 // ── 高校列表 ──
 async function loadUniversities(page = 1) {
   currentUniPage = page;
@@ -381,22 +190,10 @@ async function loadUniversities(page = 1) {
   if (level) params.set('level', level);
   if (type_) params.set('type', type_);
   try {
-    // 骨架屏
-    $('uniGrid').innerHTML = '<div class="skeleton-grid">' + Array(8).fill('<div class="skeleton skeleton-card"></div>').join('') + '</div>';
     const r = await apiGet('/universities?' + params);
-    allUniversities = r.data;
     $('uniResultsInfo').textContent = `共 ${r.total} 所高校`;
     $('uniGrid').innerHTML = r.data.map(u => renderUniCard(u, true)).join('');
     renderPagination('uniPagination', r.total, 20, page, p => loadUniversities(p));
-    // 初始化卡片3D倾斜
-    initCardTilt();
-    // 环形进度条动画
-    setTimeout(() => {
-      document.querySelectorAll('.ring-progress').forEach(circle => {
-        const offset = parseFloat(circle.getAttribute('data-offset'));
-        if (!isNaN(offset)) circle.style.strokeDashoffset = offset;
-      });
-    }, 100);
   } catch(e) { toast('加载失败'); }
 }
 
@@ -479,12 +276,10 @@ async function loadUniDetail(id) {
   } catch(e) { toast('加载失败'); }
 }
 
-// ── 院校对比（增强版） ──
+// ── 院校对比 ──
 function loadCompare() {
   renderCompareSlots();
   $('compareResult').classList.add('hidden');
-  const radar = $('compareRadar'); if(radar) radar.classList.add('hidden');
-  setupCompareSearch();
 }
 
 function renderCompareSlots() {
@@ -537,48 +332,11 @@ async function doCompare() {
     const ids = compareList.map(c => c.id);
     const data = await apiPost('/compare', ids);
     renderCompareResult(data);
-    renderRadarChart(data);
   } catch(e) { toast('对比失败'); }
 }
 
 function renderCompareResult(unis) {
-  const fields = [
-    {label:'排名', key:'rank', fmt:v=>'#'+v, lower:true},
-    {label:'参考分数线', key:'gaokao_score', fmt:v=>v+'分', lower:false},
-    {label:'就业率', key:'employment_rate', fmt:v=>v+'%', lower:false},
-    {label:'平均起薪', key:'avg_salary', fmt:v=>formatSalary(v)+'/月', lower:false},
-    {label:'评分', key:'stars', fmt:v=>'⭐'+v, lower:false},
-    {label:'学费/年', key:'tuition', fmt:v=>'¥'+v?.toLocaleString(), lower:true},
-    {label:'地区', key:'loc', fmt:v=>v},
-    {label:'类型', key:'type', fmt:v=>v},
-    {label:'层次', key:'level', fmt:v=>v},
-  ];
-  $('compareResult').classList.remove('hidden');
-  $('compareResult').innerHTML = `
-    <div class="compare-result">
-      <table class="compare-table">
-        <thead><tr><th></th>${unis.map(u=>`<th>${esc(u.cn)}</th>`).join('')}</tr></thead>
-        <tbody>${fields.map(f => {
-          const vals = unis.map(u => u[f.key]);
-          const best = f.lower ? Math.min(...vals.filter(v=>v!=null)) : Math.max(...vals.filter(v=>v!=null));
-          return `<tr><td>${f.label}</td>${unis.map(u => {
-            const v = u[f.key];
-            const isBest = v === best && vals.filter(x=>x===best).length === 1;
-            return `<td class="${isBest?'best':''}">${f.fmt(v)}</td>`;
-          }).join('')}</tr>`;
-        }).join('')}
-        ${unis[0]?.metrics ? Object.keys(unis[0].metrics).map(k => {
-          const vals = unis.map(u => u.metrics?.[k] || 0);
-          const best = Math.max(...vals);
-          return `<tr><td>${k}</td>${unis.map(u => {
-            const v = u.metrics?.[k] || 0;
-            return `<td class="${v===best&&vals.filter(x=>x===best).length===1?'best':''}">${v}</td>`;
-          }).join('')}</tr>`;
-        }).join('') : ''}
-        <tr><td>操作</td>${unis.map(u=>`<td><button class="btn btn-ghost btn-sm" data-page="uni-detail" data-id="${u.id}">查看详情</button></td>`).join('')}</tr>
-        </tbody>
-      </table>
-    </div>`;
+  renderCompareResultV2(unis);
 }
 
 // ── 专业列表 ──
@@ -626,12 +384,7 @@ async function loadForum(page = 1) {
   if (cat) params.set('category', cat);
   try {
     const r = await apiGet('/forum/posts?' + params);
-    $('forumPosts').innerHTML = r.data.map(p => `
-      <div class="post-card" data-page="post-detail" data-id="${p.id}">
-        <div class="post-title">${esc(p.title)}</div>
-        <div class="post-meta">${p.category} · ${p.author} · ${p.views}浏览 · ${p.likes}赞 · ${p.comment_count}评论</div>
-        <div class="post-tags">${(p.tags||[]).map(t=>`<span class="post-tag">${esc(t)}</span>`).join('')}</div>
-      </div>`).join('');
+    $('forumPosts').innerHTML = r.data.map(p => renderPostCard(p)).join('');
     renderPagination('forumPagination', r.total, 15, page, p => loadForum(p));
   } catch(e) {}
 }
@@ -696,9 +449,9 @@ async function submitAiReport(e) {
 
 function renderAiReport(r) {
   const groups = [
-    {key:'冲', label:'🎯 冲一冲', desc:'分数略高于你的院校，有录取希望', cls:'gap-chong', border:'var(--red)', cardCls:'chong-card'},
-    {key:'稳', label:'✅ 稳一稳', desc:'分数与你相当，录取概率较大', cls:'gap-wen', border:'var(--green)', cardCls:'wen-card'},
-    {key:'保', label:'🛡️ 保一保', desc:'分数低于你的院校，确保不滑档', cls:'gap-bao', border:'var(--accent2)', cardCls:'bao-card'},
+    {key:'冲', label:'🎯 冲一冲', desc:'分数略高于你的院校，有录取希望', cls:'gap-chong', color:'var(--red)'},
+    {key:'稳', label:'✅ 稳一稳', desc:'分数与你相当，录取概率较大', cls:'gap-wen', color:'var(--green)'},
+    {key:'保', label:'🛡️ 保一保', desc:'分数低于你的院校，确保不滑档', cls:'gap-bao', color:'var(--accent2)'},
   ];
   $('aiReportResult').innerHTML = `
     <div style="text-align:center;margin-bottom:1.5rem;padding:1.5rem;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border)">
@@ -708,14 +461,13 @@ function renderAiReport(r) {
     ${groups.map(g => {
       const list = r.suggestions[g.key] || [];
       return `<div class="report-section">
-        <h3 style="color:${g.border}">${g.label} <span style="font-size:0.78rem;font-weight:400;color:var(--text3)">${g.desc}</span></h3>
+        <h3 style="color:${g.color}">${g.label} <span style="font-size:0.78rem;font-weight:400;color:var(--text3)">${g.desc}</span></h3>
         <div class="report-group">${list.map(u => {
           const gap = u.gaokao_score - r.score;
-          return `<div class="report-card ${g.cardCls}" data-page="uni-detail" data-id="${u.id}">
+          return `<div class="report-card" data-page="uni-detail" data-id="${u.id}">
             <div class="rc-name">${esc(u.cn)}</div>
             <div class="rc-score">${u.gaokao_score}分 · ${u.loc} · ${u.level.split('/')[0]}</div>
             <span class="rc-gap ${g.cls}">${gap>0?'高'+gap+'分':'低'+Math.abs(gap)+'分'}</span>
-            <div class="rc-actions"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();addToCompare(${u.id},'${esc(u.cn)}',${u.gaokao_score});toast('已加入对比')">⚖️ 对比</button></div>
           </div>`;
         }).join('')}</div>
       </div>`;
@@ -864,6 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 对比
   $('compareGoBtn')?.addEventListener('click', doCompare);
+  initCompareSearch();
 
   // 加载首页
   navigate('home');
