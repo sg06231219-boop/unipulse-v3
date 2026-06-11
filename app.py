@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, re, sqlite3, datetime, random, secrets
 
-app = FastAPI(title="UniPulse v3", version="3.3.0")
+app = FastAPI(title="UniPulse v3", version="3.4.0")
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -71,6 +71,15 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         path TEXT, referrer TEXT, user_agent TEXT,
         ip_hash TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS wish_list (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        uni_id INTEGER NOT NULL,
+        group_order INTEGER DEFAULT 1,
+        item_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(session_id, uni_id)
     );
     CREATE TABLE IF NOT EXISTS admin_users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,6 +174,22 @@ try:
 except: pass  # Column already exists
 
 # v3.3.0: Add new columns to existing tables
+# v3.4.0: Add wish_list table for existing DBs
+try:
+    conn = get_db()
+    conn.execute("""CREATE TABLE IF NOT EXISTS wish_list (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        uni_id INTEGER NOT NULL,
+        group_order INTEGER DEFAULT 1,
+        item_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(session_id, uni_id)
+    )""")
+    conn.commit()
+    conn.close()
+except: pass
+
 _new_columns = {
     "universities": [
         ("address", "TEXT DEFAULT ''"),
@@ -247,7 +272,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.3.0","service":"UniPulse"}
+    return {"status":"ok","version":"3.4.0","service":"UniPulse"}
 
 @app.get("/api/universities")
 def list_universities(
@@ -279,6 +304,8 @@ def list_universities(
     order_sql = "DESC" if order == "desc" else "ASC"
     if sort_col == "rank" and order_sql == "ASC":
         order_sql = "ASC"  # rank 1 is best
+    elif sort_col in ("score", "stars", "salary", "employment_rate") and order_sql == "ASC":
+        order_sql = "DESC"  # default desc for these
 
     total = c.execute(f"SELECT COUNT(*) FROM universities{where_sql}", params).fetchone()[0]
     rows = c.execute(
@@ -922,6 +949,110 @@ def admin_forum_purge():
     conn.commit()
     conn.close()
     return {"status": "purged"}
+
+# ── 志愿表 ──
+
+class WishItem(BaseModel):
+    uni_id: int; group: str  # 冲/稳/保; order: int = 0
+
+class WishTable(BaseModel):
+    session_id: str; name: str = "我的志愿表"; items: list[WishItem] = []
+
+@app.get("/api/wish-table/{session_id}")
+def get_wish_table(session_id: str):
+    """获取志愿表"""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT w.*, u.cn, u.gaokao_score, u.level, u.type, u.loc, u.employment_rate, u.avg_salary, u.stars, u.rank, u.tags, u.metrics
+        FROM wish_list w JOIN universities u ON w.uni_id = u.id
+        WHERE w.session_id = ? ORDER BY w.group_order, w.item_order
+    """, (session_id,)).fetchall()
+    result = {"冲": [], "稳": [], "保": [], "name": "我的志愿表"}
+    for r in rows:
+        d = dict(r)
+        d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
+        d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        group = d.pop("group_order", "稳")
+        grp = "冲" if group == 0 else ("稳" if group == 1 else "保")
+        result[grp].append(d)
+    conn.close()
+    return result
+
+@app.post("/api/wish-table")
+def save_wish_table(body: dict):
+    """保存志愿表"""
+    session_id = body.get("session_id", "")
+    items = body.get("items", [])
+    if not session_id:
+        raise HTTPException(400, "session_id required")
+    conn = get_db()
+    conn.execute("DELETE FROM wish_list WHERE session_id = ?", (session_id,))
+    for item in items:
+        grp = item.get("group", "稳")
+        grp_order = 0 if grp == "冲" else (1 if grp == "稳" else 2)
+        conn.execute("INSERT INTO wish_list (session_id, uni_id, group_order, item_order) VALUES (?,?,?,?)",
+            (session_id, item["uni_id"], grp_order, item.get("order", 0)))
+    conn.commit()
+    conn.close()
+    return {"status": "saved", "count": len(items)}
+
+@app.post("/api/wish-table/add")
+def add_wish_item(body: dict):
+    """添加单个志愿"""
+    session_id = body.get("session_id", "")
+    uni_id = body.get("uni_id", 0)
+    group = body.get("group", "稳")
+    if not session_id or not uni_id:
+        raise HTTPException(400, "session_id and uni_id required")
+    grp_order = 0 if group == "冲" else (1 if group == "稳" else 2)
+    conn = get_db()
+    # Check if already exists
+    existing = conn.execute("SELECT group_order FROM wish_list WHERE session_id=? AND uni_id=?", (session_id, uni_id)).fetchone()
+    if existing:
+        conn.close()
+        return {"status": "exists", "group": "冲" if existing[0]==0 else ("稳" if existing[0]==1 else "保")}
+    # Get next order
+    max_order = conn.execute("SELECT MAX(item_order) FROM wish_list WHERE session_id=? AND group_order=?", (session_id, grp_order)).fetchone()[0] or 0
+    conn.execute("INSERT INTO wish_list (session_id, uni_id, group_order, item_order) VALUES (?,?,?,?)",
+        (session_id, uni_id, grp_order, max_order + 1))
+    conn.commit()
+    conn.close()
+    return {"status": "added", "group": group}
+
+@app.delete("/api/wish-table/remove")
+def remove_wish_item(session_id: str, uni_id: int):
+    """删除单个志愿"""
+    conn = get_db()
+    conn.execute("DELETE FROM wish_list WHERE session_id=? AND uni_id=?", (session_id, uni_id))
+    conn.commit()
+    conn.close()
+    return {"status": "removed"}
+
+@app.delete("/api/wish-table/clear")
+def clear_wish_table(session_id: str):
+    """清空志愿表"""
+    conn = get_db()
+    conn.execute("DELETE FROM wish_list WHERE session_id=?", (session_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "cleared"}
+
+@app.get("/api/wish-table/{session_id}/export")
+def export_wish_table(session_id: str, format: str = "json"):
+    """导出志愿表"""
+    data = get_wish_table(session_id)
+    if format == "csv":
+        import io
+        output = io.StringIO()
+        output.write("\uFEFF")  # BOM for Excel
+        output.write("分组,序号,院校名称,参考分数线,层次,类型,地区,就业率,平均起薪,排名\n")
+        for group in ["冲", "稳", "保"]:
+            for i, u in enumerate(data[group], 1):
+                output.write(f"{group},{i},{u['cn']},{u['gaokao_score']},{u['level']},{u['type']},{u['loc']},{u['employment_rate']}%,{u['avg_salary']},{u['rank']}\n")
+        from fastapi.responses import Response
+        return Response(content=output.getvalue(), media_type="text/csv; charset=utf-8-sig",
+            headers={"Content-Disposition": f"attachment; filename=wish_table_{session_id[:8]}.csv"})
+    return data
 
 # ── 静态文件 ──
 
