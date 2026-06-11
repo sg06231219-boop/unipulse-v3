@@ -229,6 +229,10 @@
             <select id="forumCategory" class="filter-select">
               <option value="">全部分类</option>
               <option value="选校咨询">选校咨询</option>
+              <option value="专业讨论">专业讨论</option>
+              <option value="录取经验">录取经验</option>
+              <option value="校园生活">校园生活</option>
+              <option value="备考经验">备考经验</option>
               <option value="专业对比">专业对比</option>
               <option value="就业前景">就业前景</option>
               <option value="考研交流">考研交流</option>
@@ -273,9 +277,10 @@
           <label>分类</label>
           <select id="postCategory" class="form-input">
             <option value="选校咨询">选校咨询</option>
-            <option value="专业对比">专业对比</option>
-            <option value="就业前景">就业前景</option>
-            <option value="考研交流">考研交流</option>
+            <option value="专业讨论">专业讨论</option>
+            <option value="录取经验">录取经验</option>
+            <option value="校园生活">校园生活</option>
+            <option value="备考经验">备考经验</option>
           </select>
         </div>
         <div class="form-group">
@@ -315,11 +320,13 @@
             <label>所在省份</label>
             <select id="aiProvince" class="form-input">
               <option value="全国">全国</option>
-              <option value="北京">北京</option><option value="上海">上海</option><option value="广东">广东</option>
-              <option value="浙江">浙江</option><option value="江苏">江苏</option><option value="山东">山东</option>
-              <option value="湖北">湖北</option><option value="湖南">湖南</option><option value="四川">四川</option>
-              <option value="重庆">重庆</option><option value="陕西">陕西</option><option value="辽宁">辽宁</option>
-              <option value="其他">其他</option>
+              <option value="北京">北京</option><option value="天津">天津</option><option value="上海">上海</option><option value="重庆">重庆</option>
+              <option value="河北">河北</option><option value="山西">山西</option><option value="辽宁">辽宁</option><option value="吉林">吉林</option><option value="黑龙江">黑龙江</option>
+              <option value="江苏">江苏</option><option value="浙江">浙江</option><option value="安徽">安徽</option><option value="福建">福建</option><option value="江西">江西</option><option value="山东">山东</option>
+              <option value="河南">河南</option><option value="湖北">湖北</option><option value="湖南">湖南</option><option value="广东">广东</option><option value="广西">广西</option><option value="海南">海南</option>
+              <option value="四川">四川</option><option value="贵州">贵州</option><option value="云南">云南</option><option value="西藏">西藏</option>
+              <option value="陕西">陕西</option><option value="甘肃">甘肃</option><option value="青海">青海</option><option value="宁夏">宁夏</option><option value="新疆">新疆</option>
+              <option value="内蒙古">内蒙古</option>
             </select>
           </div>
         </div>
@@ -328,8 +335,21 @@
           <input type="text" id="aiInterests" class="form-input" placeholder="例：计算机,电子信息,自动化">
         </div>
         <div class="form-group">
-          <label>选科组合（可选）</label>
-          <input type="text" id="aiSubjects" class="form-input" placeholder="例：物理+化学+生物">
+          <label>选科组合</label>
+          <select id="aiSubjects" class="form-input">
+            <option value="">不选择</option>
+            <option value="物化生">物化生</option>
+            <option value="物化政">物化政</option>
+            <option value="物化地">物化地</option>
+            <option value="物生政">物生政</option>
+            <option value="物生地">物生地</option>
+            <option value="物政地">物政地</option>
+            <option value="史政地">史政地</option>
+            <option value="史政生">史政生</option>
+            <option value="史化生">史化生</option>
+            <option value="史化地">史化地</option>
+            <option value="史生地">史生地</option>
+          </select>
         </div>
         <div class="form-group">
           <label>偏好</label>
@@ -413,5 +433,6 @@
   </footer>
 </div>
 <script src="/static/js/app.js"></script>
+<script src="/static/js/app_new_detail.js"></script>
 </body>
 </html>
