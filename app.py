@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, re, sqlite3, datetime, random, secrets, threading
 
-app = FastAPI(title="UniPulse v3", version="3.5.0")
+app = FastAPI(title="UniPulse v3", version="3.5.1")
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -359,6 +359,27 @@ try:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}")
             except: pass
     conn.commit()
+    conn.close()
+except: pass
+
+# v3.5.1: Fix double-serialized tags in forum_posts
+try:
+    conn = get_db()
+    rows = conn.execute("SELECT id, tags FROM forum_posts WHERE tags IS NOT NULL").fetchall()
+    fixed = 0
+    for r in rows:
+        try:
+            tags = json.loads(r["tags"])
+            if isinstance(tags, str):  # double-serialized
+                tags = json.loads(tags)
+                if isinstance(tags, list):
+                    conn.execute("UPDATE forum_posts SET tags=? WHERE id=?",
+                        (json.dumps(tags, ensure_ascii=False), r["id"]))
+                    fixed += 1
+        except: pass
+    if fixed > 0:
+        conn.commit()
+        print(f"[v3.5.1] Fixed {fixed} double-serialized forum post tags")
     conn.close()
 except: pass
 
