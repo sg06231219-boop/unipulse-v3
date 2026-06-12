@@ -424,7 +424,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.5.0","service":"UniPulse"}
+    return {"status":"ok","version":"3.6.0","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
