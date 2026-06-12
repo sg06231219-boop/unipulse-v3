@@ -145,11 +145,7 @@ async function loadPrograms() {
 async function loadForumPreview() {
   try {
     const r = await apiGet('/forum/posts?sort=hot&limit=3');
-    $('forumPreview').innerHTML = r.data.map(p => `
-      <div class="post-card" data-page="post-detail" data-id="${p.id}">
-        <div class="post-title">${esc(p.title)}</div>
-        <div class="post-meta">${p.author} · ${p.views}浏览 · ${p.likes}赞</div>
-      </div>`).join('');
+    $('forumPreview').innerHTML = r.data.map(p => renderPostCard(p)).join('');
   } catch(e) {}
 }
 
@@ -397,35 +393,191 @@ async function loadProgramDetail(name) {
 }
 
 // ── 论坛 ──
+let forumSearchTimer = null;
+let selectedForumTag = '';
+let bookmarkedPosts = new Set();
+
 async function loadForum(page = 1) {
   currentForumPage = page;
   const sort = $('forumSort')?.value || 'recent';
-  const cat = $('forumCategory')?.value || '';
+  const cat = selectedForumCategory || '';
+  const keyword = $('forumSearch')?.value?.trim() || '';
   const params = new URLSearchParams({sort, limit:15, offset:(page-1)*15});
   if (cat) params.set('category', cat);
+  if (keyword) params.set('keyword', keyword);
+  if (selectedForumTag) params.set('keyword', selectedForumTag); // tag as keyword
   try {
     const r = await apiGet('/forum/posts?' + params);
     $('forumPosts').innerHTML = r.data.map(p => renderPostCard(p)).join('');
     renderPagination('forumPagination', r.total, 15, page, p => loadForum(p));
   } catch(e) {}
+  // Load tags
+  loadForumTags();
+  // Load bookmarks
+  loadBookmarks();
+}
+
+let selectedForumCategory = '';
+
+async function loadForumTags() {
+  try {
+    const tags = await apiGet('/forum/tags');
+    $('tagCloud').innerHTML = tags.slice(0, 20).map(t =>
+      `<span class="tag-item${selectedForumTag===t.name?' active':''}" onclick="selectForumTag('${esc(t.name)}')">${esc(t.name)} <small>${t.count}</small></span>`
+    ).join('');
+    // Also populate tag select cloud in new post form
+    const tagSelect = $('tagSelectCloud');
+    if (tagSelect) {
+      tagSelect.innerHTML = tags.slice(0, 15).map(t =>
+        `<span class="tag-select-item" onclick="toggleTagSelect(this,'${esc(t.name)}')">${esc(t.name)}</span>`
+      ).join('');
+    }
+  } catch(e) {}
+}
+
+function selectForumTag(tag) {
+  if (selectedForumTag === tag) {
+    selectedForumTag = '';
+  } else {
+    selectedForumTag = tag;
+  }
+  loadForum(1);
+}
+
+let selectedPostTags = [];
+function toggleTagSelect(el, tag) {
+  const idx = selectedPostTags.indexOf(tag);
+  if (idx >= 0) {
+    selectedPostTags.splice(idx, 1);
+    el.classList.remove('active');
+  } else {
+    selectedPostTags.push(tag);
+    el.classList.add('active');
+  }
+  $('postTags').value = selectedPostTags.join(',');
+}
+
+async function loadBookmarks() {
+  try {
+    const r = await apiGet(`/forum/bookmarks?session_id=${sessionId}`);
+    bookmarkedPosts = new Set(r.data.map(p => p.id));
+  } catch(e) {}
+}
+
+function isBookmarked(postId) {
+  return bookmarkedPosts.has(postId);
+}
+
+async function toggleBookmark(postId) {
+  try {
+    const r = await apiPost(`/forum/posts/${postId}/bookmark`, {session_id: sessionId});
+    if (r.status === 'bookmarked') {
+      bookmarkedPosts.add(postId);
+      toast('已收藏');
+    } else {
+      bookmarkedPosts.delete(postId);
+      toast('已取消收藏');
+    }
+    // Re-render the bookmark button
+    const btn = document.querySelector(`.bookmark-btn[data-id="${postId}"]`);
+    if (btn) btn.textContent = bookmarkedPosts.has(postId) ? '⭐ 已收藏' : '☆ 收藏';
+  } catch(e) { toast('操作失败'); }
+}
+
+async function reportPost(postId) {
+  const reason = prompt('请输入举报原因：');
+  if (!reason) return;
+  try {
+    const r = await apiPost(`/forum/posts/${postId}/report`, {session_id: sessionId, reason});
+    if (r.status === 'already_reported') {
+      toast('你已经举报过此帖子');
+    } else {
+      toast('举报成功，感谢你的反馈');
+    }
+  } catch(e) { toast('举报失败'); }
+}
+
+function renderPostCard(p) {
+  const timeAgo = formatTimeAgo(p.created_at);
+  const isPinned = p.is_pinned;
+  const avatarColor = stringToColor(p.author);
+  return `<div class="post-card${isPinned?' pinned':''}" data-page="post-detail" data-id="${p.id}">
+    ${isPinned ? '<span class="pin-badge">置顶</span>' : ''}
+    <div class="post-card-header">
+      <div class="post-avatar" style="background:${avatarColor}">${p.author.charAt(0)}</div>
+      <div class="post-card-info">
+        <div class="post-title">${esc(p.title)}</div>
+        <div class="post-meta">
+          <span>${esc(p.author)}</span>
+          <span>${timeAgo}</span>
+          <span>👁 ${p.views}</span>
+          <span>👍 ${p.likes}</span>
+          <span>💬 ${p.comment_count || 0}</span>
+        </div>
+      </div>
+    </div>
+    ${(p.tags && p.tags.length) ? `<div class="post-tags">${p.tags.map(t=>`<span class="post-tag">${esc(t)}</span>`).join('')}</div>` : ''}
+    <div class="post-card-category">${esc(p.category)}</div>
+  </div>`;
+}
+
+function stringToColor(str) {
+  const colors = ['#ff4757','#00d68f','#4f8fff','#b18cff','#ff9f43','#ff7eb3','#00d4ff','#ffb800'];
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return '';
+  const now = new Date();
+  const date = new Date(dateStr.replace(' ', 'T'));
+  const diff = Math.floor((now - date) / 1000);
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return Math.floor(diff/60) + '分钟前';
+  if (diff < 86400) return Math.floor(diff/3600) + '小时前';
+  if (diff < 2592000) return Math.floor(diff/86400) + '天前';
+  return dateStr.slice(0,10);
 }
 
 async function loadPostDetail(id) {
   try {
     const p = await apiGet('/forum/posts/' + id);
+    const timeAgo = formatTimeAgo(p.created_at);
+    const bookmarked = isBookmarked(id);
     $('postDetailContent').innerHTML = `
       <div class="post-detail">
         <button class="btn btn-ghost btn-sm" onclick="navigate('forum')" style="margin-bottom:1rem">← 返回论坛</button>
-        <h1>${esc(p.title)}</h1>
-        <div style="color:var(--text3);font-size:0.85rem;margin:0.5rem 0">${p.category} · ${p.author} · ${p.views}浏览 · ${p.likes}赞</div>
-        <div class="post-tags" style="margin-bottom:1rem">${(p.tags||[]).map(t=>`<span class="post-tag">${esc(t)}</span>`).join('')}</div>
-        <div style="line-height:1.8;margin-bottom:2rem">${esc(p.content)}</div>
-        <h3 style="margin-bottom:0.8rem">评论 (${p.comments.length})</h3>
-        ${p.comments.map(c => `
+        <div class="post-detail-header">
+          <h1>${p.is_pinned ? '<span class="pin-badge">置顶</span>' : ''}${esc(p.title)}</h1>
+          <div style="color:var(--text3);font-size:0.85rem;margin:0.5rem 0">
+            <span class="post-category-badge">${esc(p.category)}</span>
+            <span> · ${esc(p.author)}</span>
+            <span> · ${timeAgo}</span>
+            <span> · 👁 ${p.views}浏览</span>
+            <span> · 👍 ${p.likes}赞</span>
+          </div>
+          <div class="post-tags" style="margin-bottom:1rem">${(p.tags||[]).map(t=>`<span class="post-tag">${esc(t)}</span>`).join('')}</div>
+        </div>
+        <div style="line-height:1.8;margin-bottom:2rem;white-space:pre-wrap">${esc(p.content)}</div>
+        <div class="post-detail-actions">
+          <button class="btn btn-sm btn-ghost" onclick="likePost(${id})">👍 点赞 (${p.likes})</button>
+          <button class="btn btn-sm btn-ghost bookmark-btn" data-id="${id}" onclick="toggleBookmark(${id})">${bookmarked?'⭐ 已收藏':'☆ 收藏'}</button>
+          <button class="btn btn-sm btn-ghost" onclick="reportPost(${id})" style="color:var(--text3)">🚩 举报</button>
+        </div>
+        <h3 style="margin:1.5rem 0 0.8rem">评论 (${p.comments.length})</h3>
+        ${p.comments.map((c, i) => `
           <div class="comment-card">
-            <div class="comment-author">${esc(c.author)}</div>
+            <div class="comment-header">
+              <span class="comment-floor">${i+1}楼</span>
+              <span class="comment-author">${esc(c.author)}</span>
+              <span class="comment-time">${formatTimeAgo(c.created_at)}</span>
+            </div>
             <div class="comment-text">${esc(c.text)}</div>
-            <div class="comment-meta">${c.likes}赞</div>
+            <div class="comment-actions">
+              <button class="comment-like-btn" onclick="likeComment(${c.id},this)">👍 ${c.likes}</button>
+              <button class="comment-reply-btn" onclick="replyTo('${esc(c.author)}')">回复</button>
+            </div>
           </div>`).join('')}
         <form class="comment-form" onsubmit="submitComment(event,${id})">
           <input type="text" id="commentAuthor" class="form-input" placeholder="你的昵称" value="匿名用户">
@@ -434,6 +586,31 @@ async function loadPostDetail(id) {
         </form>
       </div>`;
   } catch(e) { toast('加载失败'); }
+}
+
+async function likePost(postId) {
+  try {
+    await apiPost(`/forum/posts/${postId}/like`, {});
+    loadPostDetail(postId);
+    toast('已点赞');
+  } catch(e) { toast('点赞失败'); }
+}
+
+async function likeComment(commentId, btn) {
+  try {
+    await apiPost(`/forum/comments/${commentId}/like`, {});
+    const text = btn.textContent;
+    const match = text.match(/👍\s*(\d+)/);
+    if (match) btn.textContent = `👍 ${parseInt(match[1])+1}`;
+  } catch(e) { toast('点赞失败'); }
+}
+
+function replyTo(author) {
+  const textarea = $('commentText');
+  if (textarea) {
+    textarea.value = `@${author} `;
+    textarea.focus();
+  }
 }
 
 async function submitComment(e, postId) {
@@ -615,8 +792,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 论坛
   $('forumSort')?.addEventListener('change', () => loadForum(1));
-  $('forumCategory')?.addEventListener('change', () => loadForum(1));
+  // 论坛搜索框（300ms防抖）
+  $('forumSearch')?.addEventListener('input', () => {
+    clearTimeout(forumSearchTimer);
+    forumSearchTimer = setTimeout(() => loadForum(1), 300);
+  });
+  // 论坛分类Tab
+  document.querySelectorAll('.forum-cat-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.forum-cat-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedForumCategory = btn.dataset.category;
+      loadForum(1);
+    });
+  });
   $('newPostBtn')?.addEventListener('click', () => navigate('new-post'));
+  // 编辑器Tab切换
+  $('tabWrite')?.addEventListener('click', () => {
+    $('tabWrite').classList.add('active');
+    $('tabPreview').classList.remove('active');
+    $('editorWrite').classList.remove('hidden');
+    $('editorPreview').classList.add('hidden');
+  });
+  $('tabPreview')?.addEventListener('click', () => {
+    $('tabPreview').classList.add('active');
+    $('tabWrite').classList.remove('active');
+    $('editorPreview').classList.remove('hidden');
+    $('editorWrite').classList.add('hidden');
+    const content = $('postContent')?.value || '';
+    $('editorPreview').innerHTML = content ? `<div class="preview-content">${esc(content).replace(/\n/g, '<br>')}</div>` : '<p style="color:var(--text3)">暂无内容</p>';
+  });
+  // 字数统计
+  $('postTitle')?.addEventListener('input', () => {
+    $('titleCharCount').textContent = $('postTitle').value.length;
+  });
+  $('postContent')?.addEventListener('input', () => {
+    $('contentCharCount').textContent = $('postContent').value.length;
+  });
   $('newPostForm')?.addEventListener('submit', async e => {
     e.preventDefault();
     const data = {
@@ -624,11 +836,12 @@ document.addEventListener('DOMContentLoaded', () => {
       category: $('postCategory').value,
       content: $('postContent').value,
       author: $('postAuthor').value || '匿名用户',
-      tags: $('postTags').value ? $('postTags').value.split(',').map(t=>t.trim()) : []
+      tags: $('postTags').value ? $('postTags').value.split(',').map(t=>t.trim()).filter(Boolean) : []
     };
     try {
       await apiPost('/forum/posts', data);
       toast('发布成功');
+      selectedPostTags = [];
       navigate('forum');
     } catch(e) { toast('发布失败'); }
   });
