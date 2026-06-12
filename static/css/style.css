@@ -433,3 +433,59 @@ input,select,textarea{font-family:var(--font)}
 .wish-tips li{padding:0.3rem 0 0.3rem 1.2rem;position:relative;font-size:0.85rem;color:var(--text2)}
 .wish-tips li::before{content:'•';position:absolute;left:0;color:var(--accent)}
 .wish-tips li strong{color:var(--text)}
+
+/* ── 论坛搜索栏 ── */
+.forum-search-bar{margin-bottom:1rem}
+.forum-search-bar .form-input{padding:10px 16px;border-radius:var(--radius);font-size:0.92rem}
+
+/* ── 论坛分类Tab ── */
+.forum-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem}
+.forum-toolbar-right{display:flex;gap:0.5rem;align-items:center}
+.forum-category-tabs{display:flex;gap:0.3rem;flex-wrap:wrap}
+.forum-cat-tab{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:0.82rem;font-weight:600;cursor:pointer;transition:all var(--transition);white-space:nowrap}
+.forum-cat-tab:hover{border-color:var(--accent);color:var(--accent2)}
+.forum-cat-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ── 帖子卡片增强 ── */
+.post-card .post-card-header{display:flex;gap:0.8rem;align-items:flex-start}
+.post-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:0.9rem;flex-shrink:0}
+.post-card-info{flex:1;min-width:0}
+.post-card-info .post-title{font-weight:700;font-size:0.95rem;margin-bottom:0.2rem}
+.post-card-info .post-meta{font-size:0.75rem;color:var(--text3);display:flex;gap:0.6rem;flex-wrap:wrap}
+.post-card-category{font-size:0.7rem;color:var(--accent2);margin-top:0.4rem;padding:2px 8px;background:rgba(79,143,255,0.1);border-radius:8px;display:inline-block}
+
+/* ── 帖子详情操作栏 ── */
+.post-detail-actions{display:flex;gap:0.6rem;padding:1rem 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-bottom:1rem}
+
+/* ── 评论楼层号 ── */
+.comment-card .comment-header{display:flex;gap:0.6rem;align-items:center;margin-bottom:0.4rem}
+.comment-floor{font-size:0.72rem;font-weight:700;color:var(--accent2);padding:1px 8px;background:rgba(79,143,255,0.12);border-radius:4px}
+.comment-author{font-weight:600;font-size:0.85rem;color:var(--accent2)}
+.comment-time{font-size:0.72rem;color:var(--text3)}
+.comment-actions{display:flex;gap:0.8rem;margin-top:0.4rem}
+.comment-like-btn,.comment-reply-btn{background:none;border:none;font-size:0.78rem;color:var(--text3);cursor:pointer;padding:2px 6px;border-radius:4px;transition:all 0.15s}
+.comment-like-btn:hover{color:var(--green);background:rgba(0,214,143,0.1)}
+.comment-reply-btn:hover{color:var(--accent2);background:rgba(79,143,255,0.1)}
+
+/* ── 帖子分类角标 ── */
+.post-category-badge{padding:2px 10px;border-radius:10px;background:rgba(79,143,255,0.15);color:var(--accent2);font-size:0.78rem;font-weight:600}
+
+/* ── 编辑器Tab ── */
+.post-editor-bar{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:0.5rem}
+.editor-tab{padding:6px 16px;border:none;background:none;color:var(--text3);font-size:0.88rem;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.2s}
+.editor-tab:hover{color:var(--text2)}
+.editor-tab.active{color:var(--accent2);border-bottom-color:var(--accent)}
+.post-preview{padding:1rem;min-height:120px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border)}
+.preview-content{line-height:1.8;white-space:pre-wrap;color:var(--text)}
+
+/* ── 字数统计 ── */
+.char-count{font-size:0.72rem;color:var(--text3);text-align:right;margin-top:2px}
+
+/* ── 标签选择云 ── */
+.tag-select-cloud{display:flex;flex-wrap:wrap;gap:6px}
+.tag-select-item{padding:4px 12px;border-radius:14px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:0.78rem;cursor:pointer;transition:all var(--transition)}
+.tag-select-item:hover{border-color:var(--accent);color:var(--accent2)}
+.tag-select-item.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ── 标签云active ── */
+.tag-cloud .tag-item.active{background:var(--accent);border-color:var(--accent);color:#fff}
