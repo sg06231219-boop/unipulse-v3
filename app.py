@@ -272,7 +272,7 @@ def init_db():
             c.execute("""INSERT INTO forum_posts (title,category,author,content,views,likes,tags,created_at)
                 VALUES (?,?,?,?,?,?,?,?)""",
                 (p["title"],p.get("category","讨论"),p["author"],p["content"],p["views"],p["likes"],
-                 json.dumps(p.get("tags",[]),ensure_ascii=False),
+                 (json.dumps(json.loads(p["tags"]),ensure_ascii=False) if isinstance(p.get("tags"),str) else json.dumps(p.get("tags",[]),ensure_ascii=False)),
                  p.get("created_at",datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))))
 
         for cm in FORUM_COMMENTS:
@@ -761,9 +761,18 @@ def list_forum_tags():
     rows = conn.execute("SELECT tags FROM forum_posts WHERE is_hidden=0").fetchall()
     tag_count = {}
     for r in rows:
-        tags = json.loads(r["tags"]) if r["tags"] else []
+        try:
+            tags = json.loads(r["tags"]) if r["tags"] else []
+            # Handle double-serialized tags: if parsed result is a string, parse again
+            if isinstance(tags, str):
+                tags = json.loads(tags)
+        except (json.JSONDecodeError, TypeError):
+            tags = []
+        if not isinstance(tags, list):
+            continue
         for t in tags:
-            tag_count[t] = tag_count.get(t, 0) + 1
+            if isinstance(t, str) and len(t) > 1:  # Skip single-char noise from double-serialization
+                tag_count[t] = tag_count.get(t, 0) + 1
     # Sort by count desc
     result = sorted([{"name": k, "count": v} for k, v in tag_count.items()], key=lambda x: -x["count"])
     conn.close()
