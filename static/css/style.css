@@ -489,3 +489,42 @@ input,select,textarea{font-family:var(--font)}
 
 /* ── 标签云active ── */
 .tag-cloud .tag-item.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ═══ v3.6.0 新增样式 ═══ */
+
+/* 详情页Tab */
+.detail-tabs { display:flex; gap:0.5rem; border-bottom:2px solid var(--border,rgba(255,255,255,0.08)); padding-bottom:0; }
+.detail-tab { background:none; border:none; color:var(--text3); padding:0.6rem 1.2rem; cursor:pointer; font-size:0.95rem; font-weight:600; border-bottom:2px solid transparent; margin-bottom:-2px; transition:all 0.2s; }
+.detail-tab:hover { color:var(--text1); }
+.detail-tab.active { color:var(--accent2,#60a5fa); border-bottom-color:var(--accent2,#60a5fa); }
+.detail-tab-content { display:none; padding-top:1rem; }
+.detail-tab-content.active { display:block; }
+
+/* 省分数线表格增强 */
+.emp-table tr:hover { background:rgba(255,255,255,0.03); }
+.chance-none { background:rgba(239,68,68,0.15); color:#fca5a5; padding:2px 8px; border-radius:4px; font-size:0.8rem; }
+
+/* 院校信息网格 */
+.uni-info-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:0.8rem; margin-top:0.5rem; }
+.info-item { background:rgba(255,255,255,0.03); border-radius:8px; padding:0.8rem 1rem; display:flex; flex-direction:column; gap:0.3rem; }
+.info-label { font-size:0.8rem; color:var(--text3); }
+.info-value { font-size:0.95rem; color:var(--text1); word-break:break-all; }
+
+/* 志愿表拖拽 */
+.wish-drag-handle { cursor:grab; color:var(--text3); font-size:1.1rem; padding:0 0.3rem; user-select:none; }
+.wish-drag-handle:active { cursor:grabbing; }
+.wish-item.dragging { opacity:0.4; background:rgba(96,165,250,0.1); }
+.wish-drop-indicator { height:3px; background:var(--accent2,#60a5fa); border-radius:2px; margin:2px 0; }
+
+/* 模式切换按钮 */
+.mode-switch-group { display:flex; gap:0; border-radius:8px; overflow:hidden; border:1px solid var(--border,rgba(255,255,255,0.1)); }
+.mode-switch-btn { background:rgba(255,255,255,0.04); border:none; color:var(--text3); padding:0.5rem 1.2rem; cursor:pointer; font-size:0.88rem; font-weight:600; transition:all 0.2s; }
+.mode-switch-btn:hover { background:rgba(255,255,255,0.08); color:var(--text1); }
+.mode-switch-btn.active { background:var(--accent2,#60a5fa); color:#fff; }
+
+/* 专业浏览卡片 */
+.major-browse-card { background:rgba(255,255,255,0.04); border:1px solid var(--border,rgba(255,255,255,0.08)); border-radius:12px; padding:1.2rem; cursor:pointer; transition:all 0.2s; text-align:center; }
+.major-browse-card:hover { background:rgba(96,165,250,0.1); border-color:var(--accent2,#60a5fa); transform:translateY(-2px); }
+.major-browse-icon { font-size:2rem; margin-bottom:0.5rem; }
+.major-browse-name { font-size:0.95rem; font-weight:700; color:var(--text1); }
+.major-browse-count { font-size:0.8rem; color:var(--text3); margin-top:0.3rem; }
