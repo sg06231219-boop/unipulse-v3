@@ -235,24 +235,26 @@
       </div>
       <div class="forum-layout">
         <div class="forum-main">
+          <div class="forum-search-bar">
+            <input type="text" id="forumSearch" class="form-input" placeholder="🔍 搜索帖子标题或内容..." autocomplete="off">
+          </div>
           <div class="forum-toolbar">
-            <select id="forumSort" class="filter-select">
-              <option value="recent">最新</option>
-              <option value="hot">最热</option>
-              <option value="liked">最多赞</option>
-            </select>
-            <select id="forumCategory" class="filter-select">
-              <option value="">全部分类</option>
-              <option value="选校咨询">选校咨询</option>
-              <option value="专业讨论">专业讨论</option>
-              <option value="录取经验">录取经验</option>
-              <option value="校园生活">校园生活</option>
-              <option value="备考经验">备考经验</option>
-              <option value="专业对比">专业对比</option>
-              <option value="就业前景">就业前景</option>
-              <option value="考研交流">考研交流</option>
-            </select>
-            <button class="btn btn-primary btn-sm" id="newPostBtn">✏️ 发帖</button>
+            <div class="forum-category-tabs">
+              <button class="forum-cat-tab active" data-category="">📋 全部</button>
+              <button class="forum-cat-tab" data-category="选校咨询">🎓 志愿</button>
+              <button class="forum-cat-tab" data-category="校园生活">🏫 校园</button>
+              <button class="forum-cat-tab" data-category="专业讨论">📰 政策</button>
+              <button class="forum-cat-tab" data-category="备考经验">💡 技巧</button>
+              <button class="forum-cat-tab" data-category="录取经验">🔍 情报</button>
+            </div>
+            <div class="forum-toolbar-right">
+              <select id="forumSort" class="filter-select">
+                <option value="recent">最新</option>
+                <option value="hot">最热</option>
+                <option value="liked">最多赞</option>
+              </select>
+              <button class="btn btn-primary btn-sm" id="newPostBtn">✏️ 发帖</button>
+            </div>
           </div>
           <div id="forumPosts"></div>
           <div class="pagination" id="forumPagination"></div>
@@ -286,25 +288,38 @@
       <form id="newPostForm" class="form-card">
         <div class="form-group">
           <label>标题</label>
-          <input type="text" id="postTitle" class="form-input" placeholder="简明扼要的标题" required>
+          <input type="text" id="postTitle" class="form-input" placeholder="简明扼要的标题" required maxlength="100">
+          <div class="char-count"><span id="titleCharCount">0</span>/100</div>
         </div>
         <div class="form-group">
           <label>分类</label>
           <select id="postCategory" class="form-input">
-            <option value="选校咨询">选校咨询</option>
-            <option value="专业讨论">专业讨论</option>
-            <option value="录取经验">录取经验</option>
-            <option value="校园生活">校园生活</option>
-            <option value="备考经验">备考经验</option>
+            <option value="选校咨询">🎓 选校咨询</option>
+            <option value="专业讨论">📰 专业讨论</option>
+            <option value="录取经验">🔍 录取经验</option>
+            <option value="校园生活">🏫 校园生活</option>
+            <option value="备考经验">💡 备考经验</option>
+            <option value="专业对比">📊 专业对比</option>
+            <option value="就业前景">💼 就业前景</option>
+            <option value="考研交流">📖 考研交流</option>
           </select>
         </div>
         <div class="form-group">
           <label>内容</label>
-          <textarea id="postContent" class="form-input form-textarea" placeholder="详细描述你的问题或分享..." required></textarea>
+          <div class="post-editor-bar">
+            <button type="button" class="editor-tab active" data-tab="write" id="tabWrite">编写</button>
+            <button type="button" class="editor-tab" data-tab="preview" id="tabPreview">预览</button>
+          </div>
+          <div id="editorWrite">
+            <textarea id="postContent" class="form-input form-textarea" placeholder="详细描述你的问题或分享..." required></textarea>
+          </div>
+          <div id="editorPreview" class="post-preview hidden"></div>
+          <div class="char-count"><span id="contentCharCount">0</span>/5000</div>
         </div>
         <div class="form-group">
-          <label>标签（逗号分隔）</label>
-          <input type="text" id="postTags" class="form-input" placeholder="高考志愿,计算机,985">
+          <label>标签（点击选择或逗号分隔）</label>
+          <div class="tag-select-cloud" id="tagSelectCloud"></div>
+          <input type="text" id="postTags" class="form-input" placeholder="自定义标签，逗号分隔" style="margin-top:0.5rem">
         </div>
         <div class="form-group">
           <label>昵称</label>
