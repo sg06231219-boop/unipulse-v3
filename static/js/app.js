@@ -32,6 +32,7 @@ function navigate(page, params = {}) {
   else if (page === 'post-detail') loadPostDetail(params.id);
   else if (page === 'favorites') loadFavorites();
   else if (page === 'wish-table') loadWishTable();
+  else if (page === 'new-post') initNewPostPage();
   else if (page === 'search') performSearch(params.q || '');
 }
 
@@ -1040,3 +1041,114 @@ renderAiReport = function(r) {
     }
   });
 };
+
+// ══════════════════════════════════════
+// ── 发帖功能 ──
+// ══════════════════════════════════════
+function initNewPostPage() {
+  const titleInput = $('postTitle');
+  const titleCount = $('titleCharCount');
+  if (titleInput && titleCount) {
+    titleInput.oninput = () => { titleCount.textContent = titleInput.value.length; };
+  }
+  const form = $('newPostForm');
+  if (form) {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      await submitNewPost();
+    };
+  }
+  // 编辑器Tab切换已绑定在全局事件中
+  // Tag选择已绑定在全局事件中
+}
+
+async function submitNewPost() {
+  const title = $('postTitle')?.value?.trim();
+  const content = $('postContent')?.value?.trim();
+  const category = $('postCategory')?.value || '讨论';
+  const tagsEl = document.querySelector('.tag-select.active');
+  const tags = tagsEl ? tagsEl.dataset.tag : '';
+
+  if (!title) { toast('请输入标题'); return; }
+  if (!content) { toast('请输入内容'); return; }
+
+  try {
+    await apiPost('/forum/posts', { title, content, category, tags });
+    toast('发布成功');
+    $('postTitle').value = '';
+    $('postContent').value = '';
+    if ($('titleCharCount')) $('titleCharCount').textContent = '0';
+    document.querySelectorAll('.tag-select.active').forEach(t => t.classList.remove('active'));
+    navigate('forum');
+  } catch(e) { toast('发布失败'); }
+}
+
+// ══════════════════════════════════════
+// ── 对比雷达图 ──
+// ══════════════════════════════════════
+function drawCompareRadar(canvasId, unis) {
+  const canvas = $(canvasId);
+  if (!canvas || unis.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width; const H = canvas.height;
+  const cx = W / 2; const cy = H / 2;
+  const R = Math.min(W, H) / 2 - 40;
+
+  const dims = ['综合实力', '学科建设', '就业质量', '师资力量', '国际化', '科研水平'];
+  const n = dims.length;
+  const angles = dims.map((_, i) => (Math.PI * 2 * i / n) - Math.PI / 2);
+
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  for (let level = 1; level <= 5; level++) {
+    const r = R * level / 5;
+    ctx.beginPath();
+    angles.forEach((a, i) => {
+      const x = cx + r * Math.cos(a); const y = cy + r * Math.sin(a);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.closePath(); ctx.stroke();
+  }
+  // Draw axes
+  angles.forEach(a => {
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + R * Math.cos(a), cy + R * Math.sin(a));
+    ctx.stroke();
+  });
+  // Labels
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  dims.forEach((d, i) => {
+    ctx.fillText(d, cx + (R + 20) * Math.cos(angles[i]), cy + (R + 20) * Math.sin(angles[i]));
+  });
+
+  // Draw data polygons
+  const colors = ['rgba(59,130,246,0.3)', 'rgba(239,68,68,0.3)'];
+  const borders = ['rgba(59,130,246,1)', 'rgba(239,68,68,1)'];
+  unis.forEach((u, ui) => {
+    const s = u.score || 0;
+    const empRate = u.employment_rate || 0;
+    const salary = (u.avg_salary || 0) / 100; // normalize
+    const vals = [
+      Math.min(100, s / 7), // 综合实力
+      Math.min(100, s / 8), // 学科建设
+      Math.min(100, empRate * 1.2), // 就业质量
+      Math.min(100, s / 7.5), // 师资
+      Math.min(100, s / 8 + 5), // 国际化
+      Math.min(100, s / 6.5 + 3)  // 科研
+    ];
+    ctx.fillStyle = colors[ui] || colors[0];
+    ctx.strokeStyle = borders[ui] || borders[0];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    vals.forEach((v, i) => {
+      const r = R * v / 100;
+      const x = cx + r * Math.cos(angles[i]); const y = cy + r * Math.sin(angles[i]);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  });
+}
