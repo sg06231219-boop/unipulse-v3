@@ -501,6 +501,20 @@
   </section>
 
   <!-- Toast -->
+  <!-- 专业优先浏览 -->
+  <div id="page-major-browse" class="page hidden">
+    <div class="container" style="padding:2rem 1rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+        <h1 style="font-size:1.5rem;font-weight:800">📚 按专业选院校</h1>
+        <div class="mode-switch-group">
+          <button class="mode-switch-btn" data-mode="university" onclick="switchBrowseMode('university')">🎯 院校优先</button>
+          <button class="mode-switch-btn active" data-mode="major" onclick="switchBrowseMode('major')">📚 专业优先</button>
+        </div>
+      </div>
+      <div id="majorBrowseGrid" class="uni-grid"></div>
+    </div>
+  </div>
+
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- 移动端底部导航 -->
