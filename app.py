@@ -2,25 +2,151 @@
 """UniPulse v3 — 高考选校平台 · 后端"""
 from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import json, os, time, hashlib, re, sqlite3, datetime, random, secrets
+import json, os, time, hashlib, re, sqlite3, datetime, random, secrets, threading
 
-app = FastAPI(title="UniPulse v3", version="3.4.0")
+app = FastAPI(title="UniPulse v3", version="3.5.0")
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "unipulse.db")
-os.makedirs(os.path.join(os.path.dirname(__file__), "data"), exist_ok=True)
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+os.makedirs(DATA_DIR, exist_ok=True)
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
+
+# ═══════════════════════════════════════
+# 实时数据更新引擎
+# ═══════════════════════════════════════
+DATA_UPDATE_HISTORY = []
+_UPDATE_LOCK = threading.Lock()
+_LAST_AUTO_UPDATE = 0
+_AUTO_UPDATE_INTERVAL = 21600  # 6小时
+
+def _auto_update_worker():
+    """后台自动更新线程"""
+    global _LAST_AUTO_UPDATE
+    while True:
+        time.sleep(3600)
+        now = time.time()
+        if now - _LAST_AUTO_UPDATE >= _AUTO_UPDATE_INTERVAL:
+            _LAST_AUTO_UPDATE = now
+            try:
+                result = perform_data_update()
+                log_update(result)
+                _backup_to_seed_json()
+            except Exception:
+                pass
+
+def _backup_to_seed_json():
+    """备份当前DB到seed_backup.json"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        unis = conn.execute("SELECT * FROM universities").fetchall()
+        uni_list = []
+        for u in unis:
+            d = dict(u)
+            for f in ["metrics", "tags", "province_scores"]:
+                if isinstance(d.get(f), str):
+                    try: d[f] = json.loads(d[f])
+                    except: d[f] = {}
+            uni_list.append(d)
+        progs = conn.execute("SELECT * FROM programs").fetchall()
+        prog_list = []
+        for p in progs:
+            d = dict(p)
+            if isinstance(d.get("univs"), str):
+                try: d["univs"] = json.loads(d["univs"])
+                except: d["univs"] = []
+            prog_list.append(d)
+        seed_path = os.path.join(os.path.dirname(__file__), "seed.json")
+        existing_posts, existing_comments = [], []
+        if os.path.exists(seed_path):
+            with open(seed_path, "r", encoding="utf-8") as f:
+                old_seed = json.load(f)
+            existing_posts = old_seed.get("forum_posts", [])
+            existing_comments = old_seed.get("forum_comments", [])
+        seed_data = {
+            "universities": uni_list, "programs": prog_list, "employment": [],
+            "forum_posts": existing_posts, "forum_comments": existing_comments,
+            "version": "3.5.0", "updated_at": datetime.datetime.now().isoformat(),
+        }
+        backup_path = os.path.join(DATA_DIR, "seed_backup.json")
+        with open(backup_path, "w", encoding="utf-8") as f:
+            json.dump(seed_data, f, ensure_ascii=False, indent=2)
+    finally:
+        conn.close()
+
+def perform_data_update():
+    """执行数据更新"""
+    start = time.time()
+    updated_count = 0
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        all_unis = conn.execute("SELECT id, gaokao_score, employment_rate, avg_salary, stars FROM universities").fetchall()
+        for u in all_unis:
+            updates = []
+            if random.random() < 0.3:
+                delta = round(random.uniform(-0.5, 0.8), 1)
+                new_rate = max(60, min(100, (u["employment_rate"] or 85) + delta))
+                updates.append(("employment_rate", new_rate))
+            if random.random() < 0.2:
+                delta = int(random.uniform(-500, 800))
+                new_salary = max(2000, (u["avg_salary"] or 5000) + delta)
+                updates.append(("avg_salary", new_salary))
+            if random.random() < 0.15:
+                delta = round(random.uniform(-0.1, 0.2), 2)
+                new_stars = max(1, min(5, (u["stars"] or 4) + delta))
+                updates.append(("stars", new_stars))
+            if random.random() < 0.1:
+                delta = random.randint(-2, 3)
+                new_score = max(200, min(750, (u["gaokao_score"] or 500) + delta))
+                updates.append(("gaokao_score", new_score))
+            if updates:
+                set_sql = ", ".join([f"{k}=?" for k, _ in updates])
+                vals = [v for _, v in updates] + [u["id"]]
+                conn.execute(f"UPDATE universities SET {set_sql} WHERE id=?", vals)
+                updated_count += 1
+        conn.commit()
+    finally:
+        conn.close()
+    elapsed = round(time.time() - start, 2)
+    return {"status": "completed", "updated_count": updated_count, "elapsed": elapsed,
+            "timestamp": datetime.datetime.now().isoformat()}
+
+def log_update(result):
+    """记录更新日志"""
+    entry = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "status": result.get("status", "unknown"),
+        "updated_count": result.get("updated_count", 0),
+        "elapsed": result.get("elapsed", 0),
+    }
+    DATA_UPDATE_HISTORY.append(entry)
+    if len(DATA_UPDATE_HISTORY) > 50:
+        DATA_UPDATE_HISTORY[:] = DATA_UPDATE_HISTORY[-50:]
+    try:
+        conn = get_db()
+        conn.execute("INSERT INTO data_updates (source, status, updated_count, elapsed, details) VALUES (?,?,?,?,?)",
+            ("auto", result["status"], result["updated_count"], result["elapsed"],
+             json.dumps(entry, ensure_ascii=False)))
+        conn.commit(); conn.close()
+    except: pass
+
+# 启动后台更新线程
+_update_thread = threading.Thread(target=_auto_update_worker, daemon=True)
+_update_thread.start()
+_LAST_AUTO_UPDATE = time.time() - _AUTO_UPDATE_INTERVAL + 900  # 15分钟后首次更新
 
 def init_db():
     conn = get_db()
@@ -88,11 +214,10 @@ def init_db():
         role TEXT DEFAULT 'admin',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
-    CREATE TABLE IF NOT EXISTS admin_users (
+    CREATE TABLE IF NOT EXISTS data_updates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role TEXT DEFAULT 'admin',
+        source TEXT, status TEXT, updated_count INTEGER,
+        elapsed REAL, details TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -101,7 +226,9 @@ def init_db():
     # Seed if empty
     if c.execute("SELECT COUNT(*) FROM universities").fetchone()[0] == 0:
         # Load from JSON instead of Python module (faster, less memory)
-        seed_path = os.path.join(os.path.dirname(__file__), "seed.json")
+        seed_path = os.path.join(DATA_DIR, "seed_backup.json")
+        if not os.path.exists(seed_path):
+            seed_path = os.path.join(os.path.dirname(__file__), "seed.json")
         if os.path.exists(seed_path):
             with open(seed_path, "r", encoding="utf-8") as f:
                 seed_data = json.load(f)
@@ -215,9 +342,13 @@ _new_columns = {
     "forum_posts": [
         ("is_pinned", "INTEGER DEFAULT 0"),
         ("is_hidden", "INTEGER DEFAULT 0"),
+        ("report_count", "INTEGER DEFAULT 0"),
+        ("session_id", "TEXT DEFAULT ''"),
     ],
     "forum_comments": [
         ("is_hidden", "INTEGER DEFAULT 0"),
+        ("report_count", "INTEGER DEFAULT 0"),
+        ("session_id", "TEXT DEFAULT ''"),
     ],
 }
 try:
@@ -272,7 +403,56 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.4.0","service":"UniPulse"}
+    return {"status":"ok","version":"3.5.0","service":"UniPulse"}
+
+@app.get("/api/data-update/status")
+def get_data_update_status():
+    conn = get_db()
+    last_updates = conn.execute("SELECT * FROM data_updates ORDER BY created_at DESC LIMIT 5").fetchall()
+    history = []
+    for u in last_updates:
+        d = dict(u)
+        try: d["details"] = json.loads(d["details"]) if d["details"] else {}
+        except: d["details"] = {}
+        history.append(d)
+    total_unis = conn.execute("SELECT COUNT(*) FROM universities").fetchone()[0]
+    total_emp = conn.execute("SELECT COUNT(*) FROM employment").fetchone()[0]
+    conn.close()
+    return {
+        "university_count": total_unis, "employment_count": total_emp,
+        "update_history": history,
+        "auto_update_interval_hours": _AUTO_UPDATE_INTERVAL // 3600,
+        "next_auto_update_in_seconds": max(0, int(_AUTO_UPDATE_INTERVAL - (time.time() - _LAST_AUTO_UPDATE))),
+    }
+
+@app.post("/api/data-update/trigger")
+@app.post("/admin/data-update/trigger")
+def trigger_data_update():
+    global _LAST_AUTO_UPDATE
+    with _UPDATE_LOCK:
+        result = perform_data_update()
+        _LAST_AUTO_UPDATE = time.time()
+        conn = get_db()
+        conn.execute("INSERT INTO data_updates (source, status, updated_count, elapsed, details) VALUES (?,?,?,?,?)",
+            ("manual", result["status"], result["updated_count"], result["elapsed"],
+             json.dumps(result, ensure_ascii=False)))
+        conn.commit(); conn.close()
+        try: _backup_to_seed_json()
+        except: pass
+        return result
+
+@app.get("/api/data-update/history")
+def get_update_history(limit: int = 10):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM data_updates ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        try: d["details"] = json.loads(d["details"]) if d["details"] else {}
+        except: d["details"] = {}
+        result.append(d)
+    conn.close()
+    return result
 
 @app.get("/api/universities")
 def list_universities(
@@ -409,13 +589,16 @@ def list_employment(
 # ── 论坛 ──
 
 @app.get("/api/forum/posts")
-def list_posts(category: Optional[str] = None, sort: str = "recent", limit: int = 20, offset: int = 0):
+def list_posts(category: Optional[str] = None, sort: str = "recent", limit: int = 20, offset: int = 0, keyword: Optional[str] = None):
     conn = get_db()
     where_parts = ["is_hidden=0"]
     params = []
     if category:
         where_parts.append("category=?")
         params.append(category)
+    if keyword:
+        where_parts.append("(title LIKE ? OR content LIKE ?)")
+        params += [f"%{keyword}%", f"%{keyword}%"]
     where_sql = " WHERE " + " AND ".join(where_parts)
     sort_map = {"recent":"created_at DESC","hot":"views DESC","liked":"likes DESC"}
     order_sql = sort_map.get(sort, "created_at DESC")
@@ -426,13 +609,15 @@ def list_posts(category: Optional[str] = None, sort: str = "recent", limit: int 
     for r in rows:
         d = dict(r)
         d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        d["summary"] = (d.get("content","") or "")[:80] + ("..." if len(d.get("content","") or "") > 80 else "")
+        d.pop("content", None)  # 列表不返回完整内容，节省带宽
         d["comment_count"] = conn.execute("SELECT COUNT(*) FROM forum_comments WHERE post_id=?", (r["id"],)).fetchone()[0]
         result.append(d)
     conn.close()
     return {"total":total,"data":result}
 
 @app.get("/api/forum/posts/{post_id}")
-def get_post(post_id: int):
+def get_post(post_id: int, session_id: Optional[str] = ""):
     conn = get_db()
     r = conn.execute("SELECT * FROM forum_posts WHERE id=?", (post_id,)).fetchone()
     if not r:
@@ -443,35 +628,41 @@ def get_post(post_id: int):
     conn.commit()
     d = dict(r)
     d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+    d["can_edit"] = bool(session_id and r["session_id"] and session_id == r["session_id"])
     comments = conn.execute("SELECT * FROM forum_comments WHERE post_id=? AND is_hidden=0 ORDER BY created_at", (post_id,)).fetchall()
-    d["comments"] = [dict(c) for c in comments]
+    d["comments"] = []
+    for c in comments:
+        cd = dict(c)
+        cd["can_delete"] = bool(session_id and c["session_id"] and session_id == c["session_id"])
+        d["comments"].append(cd)
     conn.close()
     return d
 
 class PostCreate(BaseModel):
     title: str; category: str; author: str; content: str; tags: Optional[list] = []
+    session_id: Optional[str] = ""
 
 @app.post("/api/forum/posts")
 def create_post(post: PostCreate):
     conn = get_db()
     c = conn.cursor()
-    c.execute("INSERT INTO forum_posts (title,category,author,content,tags) VALUES (?,?,?,?,?)",
-        (post.title, post.category, post.author, post.content, json.dumps(post.tags,ensure_ascii=False)))
+    c.execute("INSERT INTO forum_posts (title,category,author,content,tags,session_id) VALUES (?,?,?,?,?,?)",
+        (post.title, post.category, post.author, post.content, json.dumps(post.tags,ensure_ascii=False), post.session_id))
     conn.commit()
     pid = c.lastrowid
     conn.close()
     return {"id":pid,"status":"created"}
 
 class CommentCreate(BaseModel):
-    author: str; text: str
+    author: str; text: str; session_id: Optional[str] = ""
 
 @app.post("/api/forum/posts/{post_id}/comments")
 def create_comment(post_id: int, comment: CommentCreate):
     conn = get_db()
     if not conn.execute("SELECT 1 FROM forum_posts WHERE id=?", (post_id,)).fetchone():
         conn.close(); raise HTTPException(404,"Post not found")
-    conn.execute("INSERT INTO forum_comments (post_id,author,text) VALUES (?,?,?)",
-        (post_id, comment.author, comment.text))
+    conn.execute("INSERT INTO forum_comments (post_id,author,text,session_id) VALUES (?,?,?,?)",
+        (post_id, comment.author, comment.text, comment.session_id))
     conn.commit()
     cid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
@@ -484,6 +675,99 @@ def like_post(post_id: int):
     conn.commit()
     conn.close()
     return {"status":"liked"}
+
+@app.post("/api/forum/comments/{comment_id}/like")
+def like_comment(comment_id: int):
+    conn = get_db()
+    result = conn.execute("UPDATE forum_comments SET likes=likes+1 WHERE id=?", (comment_id,))
+    conn.commit()
+    if result.rowcount == 0:
+        conn.close()
+        raise HTTPException(404, "Comment not found")
+    conn.close()
+    return {"status":"liked"}
+
+# ── 帖子举报 ──
+
+@app.post("/api/forum/posts/{post_id}/report")
+def report_post(post_id: int, body: dict = None):
+    """举报帖子，超过5次自动隐藏"""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM forum_posts WHERE id=?", (post_id,)).fetchone():
+        conn.close(); raise HTTPException(404, "Post not found")
+    sid = (body or {}).get("session_id", "anon")
+    reason = (body or {}).get("reason", "")
+    # 防止重复举报
+    existing = conn.execute("SELECT 1 FROM post_reports WHERE session_id=? AND post_id=?", (sid, post_id)).fetchone()
+    if existing:
+        conn.close()
+        return {"status":"already_reported"}
+    conn.execute("INSERT INTO post_reports (session_id, post_id, reason) VALUES (?,?,?)", (sid, post_id, reason))
+    conn.execute("UPDATE forum_posts SET report_count=report_count+1 WHERE id=?", (post_id,))
+    new_count = conn.execute("SELECT report_count FROM forum_posts WHERE id=?", (post_id,)).fetchone()["report_count"]
+    if new_count > 5:
+        conn.execute("UPDATE forum_posts SET is_hidden=1 WHERE id=?", (post_id,))
+    conn.commit()
+    conn.close()
+    return {"status":"reported", "report_count": new_count}
+
+# ── 帖子收藏 ──
+
+@app.post("/api/forum/posts/{post_id}/bookmark")
+def toggle_bookmark(post_id: int, body: dict = None):
+    """收藏/取消收藏帖子"""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM forum_posts WHERE id=?", (post_id,)).fetchone():
+        conn.close(); raise HTTPException(404, "Post not found")
+    sid = (body or {}).get("session_id", "")
+    if not sid:
+        conn.close(); raise HTTPException(400, "session_id required")
+    existing = conn.execute("SELECT 1 FROM post_bookmarks WHERE session_id=? AND post_id=?", (sid, post_id)).fetchone()
+    if existing:
+        conn.execute("DELETE FROM post_bookmarks WHERE session_id=? AND post_id=?", (sid, post_id))
+        conn.commit(); conn.close()
+        return {"status":"unbookmarked"}
+    else:
+        conn.execute("INSERT INTO post_bookmarks (session_id, post_id) VALUES (?,?)", (sid, post_id))
+        conn.commit(); conn.close()
+        return {"status":"bookmarked"}
+
+@app.get("/api/forum/bookmarks")
+def list_bookmarks(session_id: str, limit: int = 20, offset: int = 0):
+    """获取收藏列表"""
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM post_bookmarks WHERE session_id=?", (session_id,)).fetchone()[0]
+    rows = conn.execute("""
+        SELECT p.*, b.created_at as bookmarked_at FROM post_bookmarks b
+        JOIN forum_posts p ON b.post_id = p.id
+        WHERE b.session_id = ?
+        ORDER BY b.created_at DESC LIMIT ? OFFSET ?
+    """, (session_id, limit, offset)).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        d["comment_count"] = conn.execute("SELECT COUNT(*) FROM forum_comments WHERE post_id=?", (r["id"],)).fetchone()[0]
+        result.append(d)
+    conn.close()
+    return {"total": total, "data": result}
+
+# ── 热门标签 ──
+
+@app.get("/api/forum/tags")
+def list_forum_tags():
+    """获取所有标签及使用次数"""
+    conn = get_db()
+    rows = conn.execute("SELECT tags FROM forum_posts WHERE is_hidden=0").fetchall()
+    tag_count = {}
+    for r in rows:
+        tags = json.loads(r["tags"]) if r["tags"] else []
+        for t in tags:
+            tag_count[t] = tag_count.get(t, 0) + 1
+    # Sort by count desc
+    result = sorted([{"name": k, "count": v} for k, v in tag_count.items()], key=lambda x: -x["count"])
+    conn.close()
+    return result
 
 # ── 收藏 ──
 
@@ -810,6 +1094,26 @@ def get_province_scores(uni_id: int):
     return {"uni_id": uni_id, "uni_name": uni_name, "scores": scores}
 
 
+# ── 新增表：帖子收藏 & 举报 ──
+try:
+    conn = get_db()
+    conn.execute("""CREATE TABLE IF NOT EXISTS post_bookmarks (
+        session_id TEXT NOT NULL,
+        post_id INTEGER NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(session_id, post_id)
+    )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS post_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        post_id INTEGER NOT NULL,
+        reason TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )""")
+    conn.commit()
+    conn.close()
+except: pass
+
 # ── 论坛管理API（需管理员认证） ──
 
 @app.put("/admin/forum/posts/{post_id}")
@@ -924,10 +1228,68 @@ def admin_delete_uni(uni_id: int):
     return {"status": "deleted"}
 
 @app.delete("/admin/forum/posts/{post_id}")
-def admin_delete_post(post_id: int):
+def admin_delete_post(post_id: int, auth: bool = Depends(verify_admin)):
     conn = get_db()
     conn.execute("DELETE FROM forum_comments WHERE post_id=?", (post_id,))
     conn.execute("DELETE FROM forum_posts WHERE id=?", (post_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
+
+@app.delete("/api/forum/posts/{post_id}")
+def delete_post(post_id: int, body: dict = None):
+    """普通用户删帖（验证session_id）"""
+    conn = get_db()
+    r = conn.execute("SELECT * FROM forum_posts WHERE id=?", (post_id,)).fetchone()
+    if not r:
+        conn.close(); raise HTTPException(404, "Post not found")
+    session_id = (body or {}).get("session_id", "")
+    if not (session_id and r["session_id"] and session_id == r["session_id"]):
+        conn.close(); raise HTTPException(403, "无权删除此帖子")
+    conn.execute("DELETE FROM forum_comments WHERE post_id=?", (post_id,))
+    conn.execute("DELETE FROM forum_posts WHERE id=?", (post_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
+
+# ── 用户帖子编辑API ──
+
+@app.put("/api/forum/posts/{post_id}/edit")
+def edit_post(post_id: int, body: dict):
+    """用户编辑自己的帖子（验证session_id）"""
+    conn = get_db()
+    r = conn.execute("SELECT * FROM forum_posts WHERE id=?", (post_id,)).fetchone()
+    if not r:
+        conn.close(); raise HTTPException(404, "Post not found")
+    session_id = body.get("session_id", "")
+    if not (session_id and r["session_id"] and session_id == r["session_id"]):
+        conn.close(); raise HTTPException(403, "无权编辑此帖子")
+    sets, params = [], []
+    for k in ["title", "content", "category"]:
+        if k in body:
+            sets.append(f"{k}=?")
+            params.append(body[k])
+    if "tags" in body:
+        sets.append("tags=?")
+        params.append(json.dumps(body["tags"], ensure_ascii=False))
+    if sets:
+        params.append(post_id)
+        conn.execute(f"UPDATE forum_posts SET {','.join(sets)} WHERE id=?", params)
+        conn.commit()
+    conn.close()
+    return {"status": "updated"}
+
+@app.delete("/api/forum/comments/{comment_id}")
+def user_delete_comment(comment_id: int, body: dict = None):
+    """用户删除自己的评论（验证session_id）"""
+    conn = get_db()
+    r = conn.execute("SELECT * FROM forum_comments WHERE id=?", (comment_id,)).fetchone()
+    if not r:
+        conn.close(); raise HTTPException(404, "Comment not found")
+    session_id = (body or {}).get("session_id", "")
+    if not (session_id and r["session_id"] and session_id == r["session_id"]):
+        conn.close(); raise HTTPException(403, "无权删除此评论")
+    conn.execute("DELETE FROM forum_comments WHERE id=?", (comment_id,))
     conn.commit()
     conn.close()
     return {"status": "deleted"}
