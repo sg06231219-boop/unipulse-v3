@@ -11,6 +11,7 @@ let currentForumPage = 1;
 let userScore = parseInt(localStorage.getItem('unipulse_score')) || 0;
 let compareList = JSON.parse(localStorage.getItem('unipulse_compare') || '[]');
 let wishList = JSON.parse(localStorage.getItem('unipulse_wish') || '[]'); // [{id, name, score, group}]
+let browseMode = localStorage.getItem('unipulse_browse_mode') || 'university'; // 'university' | 'major'
 
 // ── 路由 ──
 function navigate(page, params = {}) {
@@ -32,6 +33,7 @@ function navigate(page, params = {}) {
   else if (page === 'post-detail') loadPostDetail(params.id);
   else if (page === 'favorites') loadFavorites();
   else if (page === 'wish-table') loadWishTable();
+  else if (page === 'major-browse') loadMajorBrowse();
   else if (page === 'new-post') initNewPostPage();
   else if (page === 'search') performSearch(params.q || '');
 }
@@ -290,8 +292,120 @@ async function loadUniDetail(id) {
       </div>
       ${u.programs.map(p => p.description ? `<p style="font-size:0.82rem;color:var(--text3);margin-top:0.5rem"><strong>${esc(p.program_name)}：</strong>${esc(p.description)}</p>` : '').join('')}
       ` : ''}
+
+      <!-- 详情页Tab切换 -->
+      <div class="detail-tabs" style="margin-top:1.5rem">
+        <button class="detail-tab active" onclick="switchDetailTab('overview',this)">📊 概况</button>
+        <button class="detail-tab" onclick="switchDetailTab('province',this)">🗺️ 省分数线</button>
+        <button class="detail-tab" onclick="switchDetailTab('info',this)">🏫 院校信息</button>
+      </div>
+
+      <!-- 概况Tab -->
+      <div id="detailTabOverview" class="detail-tab-content active">
+        ${u.programs && u.programs.length > 0 ? `
+        <h2 style="font-size:1.2rem;font-weight:800;margin:1rem 0 0.8rem">💼 专业就业数据</h2>
+        <div style="overflow-x:auto">
+          <table class="emp-table">
+            <thead><tr><th>专业</th><th>平均薪资</th><th>起薪</th><th>就业率</th><th>内卷指数</th><th>前景</th></tr></thead>
+            <tbody>${u.programs.map(p => `<tr>
+              <td><strong>${esc(p.program_name)}</strong></td>
+              <td>${formatSalary(p.salary_avg)}</td>
+              <td>${formatSalary(p.salary_entry)}</td>
+              <td style="color:${p.employment_rate>=97?'var(--green)':'var(--text)'}">${p.employment_rate}%</td>
+              <td style="color:${p.pressure>=75?'var(--red)':p.pressure>=60?'var(--yellow)':'var(--green)'}">${p.pressure}/100</td>
+              <td style="color:${p.prospects>=85?'var(--green)':'var(--text)'}">${p.prospects}/100</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+        ` : '<p style="color:var(--text3);margin-top:1rem">暂无专业就业数据</p>'}
+      </div>
+
+      <!-- 省分数线Tab -->
+      <div id="detailTabProvince" class="detail-tab-content" style="display:none">
+        ${renderProvinceScores(u)}
+      </div>
+
+      <!-- 院校信息Tab -->
+      <div id="detailTabInfo" class="detail-tab-content" style="display:none">
+        ${renderUniInfo(u)}
+      </div>
     </div>`;
   } catch(e) { toast('加载失败'); }
+}
+
+function switchDetailTab(tab, btn) {
+  document.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.detail-tab-content').forEach(c => { c.style.display='none'; c.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  const el = document.getElementById('detailTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
+  if (el) { el.style.display='block'; el.classList.add('active'); }
+}
+
+function renderProvinceScores(u) {
+  const ps = u.province_scores || {};
+  const keys = Object.keys(ps);
+  if (keys.length === 0) return '<p style="color:var(--text3)">暂无省分数线数据</p>';
+  const sorted = keys.sort();
+  const rows = sorted.map(prov => {
+    const score = ps[prov];
+    const gap = userScore ? userScore - score : null;
+    let cls = '', label = '';
+    if (gap !== null) {
+      if (gap >= 20) { cls = 'chance-bao'; label = '保'; }
+      else if (gap >= 0) { cls = 'chance-wen'; label = '稳'; }
+      else if (gap >= -20) { cls = 'chance-chong'; label = '冲'; }
+      else { cls = 'chance-none'; label = '难'; }
+    }
+    return '<tr>' +
+      '<td>' + esc(prov) + '</td>' +
+      '<td><strong>' + score + '</strong></td>' +
+      (gap !== null ? '<td style="color:' + (gap>=0?'var(--green)':'var(--red)') + '">' + (gap>=0?'+':'') + gap + '</td><td><span class="uni-card-chance ' + cls + '">' + label + '</span></td>' : '<td>-</td><td>-</td>') +
+      '</tr>';
+  }).join('');
+  return '<div style="margin-top:0.5rem">' +
+    (userScore ? '<p style="color:var(--text2);margin-bottom:0.8rem;font-size:0.88rem">💡 以你的 <strong>' + userScore + '分</strong> 为基准，标红=冲、标绿=保</p>' : '<p style="color:var(--text2);margin-bottom:0.8rem;font-size:0.88rem">💡 在首页输入你的分数，可查看各省份录取概率</p>') +
+    '<div style="overflow-x:auto"><table class="emp-table"><thead><tr><th>省份</th><th>分数线</th><th>与我的差距</th><th>录取评估</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+}
+
+function renderUniInfo(u) {
+  let html = '<div class="uni-info-grid">';
+  const fields = [
+    ['motto', '校训', '🎓'],
+    ['founded_year', '建校年份', '📅'],
+    ['campus_area', '校园面积', '📐'],
+    ['student_count', '在校学生', '👥'],
+    ['faculty_count', '专任教师', '👨‍🏫'],
+    ['doctoral_programs', '博士点', '🎓'],
+    ['master_programs', '硕士点', '📚'],
+    ['national_key_programs', '国家重点学科', '⭐'],
+    ['postdoc_stations', '博士后流动站', '🔬'],
+    ['academicians', '院士人数', '🏅'],
+    ['school_nature', '办学性质', '🏛️'],
+    ['affiliation', '主管部门', '🏢'],
+    ['dormitory', '宿舍条件', '🏠'],
+    ['canteen', '食堂评价', '🍽️'],
+    ['campus_life', '校园生活', '🌈'],
+    ['notable_alumni', '知名校友', '🌟'],
+    ['address', '地址', '📍'],
+    ['phone', '联系电话', '📞'],
+    ['website', '官方网站', '🔗'],
+  ];
+  fields.forEach(([key, label, icon]) => {
+    const val = u[key];
+    if (val && val !== '' && val !== 0) {
+      if (key === 'website') {
+        html += '<div class="info-item"><span class="info-label">' + icon + ' ' + label + '</span><span class="info-value"><a href="' + esc(String(val)) + '" target="_blank" rel="noopener" style="color:var(--accent2)">' + esc(String(val)) + '</a></span></div>';
+      } else if (key === 'notable_alumni') {
+        const alumni = Array.isArray(val) ? val.join('、') : String(val);
+        html += '<div class="info-item"><span class="info-label">' + icon + ' ' + label + '</span><span class="info-value">' + esc(alumni) + '</span></div>';
+      } else {
+        html += '<div class="info-item"><span class="info-label">' + icon + ' ' + label + '</span><span class="info-value">' + esc(String(val)) + '</span></div>';
+      }
+    }
+  });
+  html += '</div>';
+  const hasAny = fields.some(([key]) => u[key] && u[key] !== '' && u[key] !== 0);
+  return hasAny ? html : '<p style="color:var(--text3)">暂无详细信息</p>';
 }
 
 // ── 院校对比 ──
@@ -954,7 +1068,8 @@ async function loadWishTable() {
     const container = $('wishItems' + (g==='冲'?'Chong':g==='稳'?'Wen':'Bao'));
     if (!container) return;
     container.innerHTML = groups[g].map((w, i) => `
-      <div class="wish-item">
+      <div class="wish-item" draggable="true" data-wish-id="${w.id}" data-wish-group="${g}" data-wish-idx="${i}">
+        <span class="wish-drag-handle" title="拖拽排序">☰</span>
         <span class="wish-item-order">${i+1}</span>
         <div class="wish-item-info">
           <div class="wish-item-name">${esc(w.name)}</div>
@@ -968,6 +1083,8 @@ async function loadWishTable() {
           <button class="btn btn-xs btn-ghost" style="color:var(--red)" onclick="removeFromWish(${w.id})" title="移除">✕</button>
         </div>
       </div>`).join('') || '<div class="wish-empty-group">点击高校卡片上的 +志愿表 添加</div>';
+    // Bind drag events after render
+    initWishDragDrop(container, g);
   });
 
   // Render list view
@@ -1041,6 +1158,96 @@ renderAiReport = function(r) {
     }
   });
 };
+
+
+// ── 志愿表拖拽排序 ──
+let dragSrcWishId = null;
+let dragSrcGroup = null;
+
+function initWishDragDrop(container, group) {
+  const items = container.querySelectorAll('.wish-item[draggable]');
+  items.forEach(item => {
+    item.addEventListener('dragstart', e => {
+      dragSrcWishId = parseInt(item.dataset.wishId);
+      dragSrcGroup = item.dataset.wishGroup;
+      item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', dragSrcWishId);
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      document.querySelectorAll('.wish-drop-indicator').forEach(el => el.remove());
+    });
+    item.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      // Show drop indicator
+      const rect = item.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const existing = item.parentNode.querySelector('.wish-drop-indicator');
+      if (existing) existing.remove();
+      const indicator = document.createElement('div');
+      indicator.className = 'wish-drop-indicator';
+      if (e.clientY < midY) {
+        item.parentNode.insertBefore(indicator, item);
+      } else {
+        item.parentNode.insertBefore(indicator, item.nextSibling);
+      }
+    });
+    item.addEventListener('drop', e => {
+      e.preventDefault();
+      const targetId = parseInt(item.dataset.wishId);
+      const targetGroup = item.dataset.wishGroup;
+      if (dragSrcWishId && dragSrcWishId !== targetId && dragSrcGroup === targetGroup) {
+        reorderWishItem(dragSrcWishId, targetId, targetGroup, e.clientY < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2 ? 'before' : 'after');
+      }
+      document.querySelectorAll('.wish-drop-indicator').forEach(el => el.remove());
+    });
+  });
+}
+
+function reorderWishItem(srcId, targetId, group, position) {
+  const groupItems = wishList.filter(w => w.group === group);
+  const others = wishList.filter(w => w.group !== group);
+  const srcIdx = groupItems.findIndex(w => w.id === srcId);
+  const targetIdx = groupItems.findIndex(w => w.id === targetId);
+  if (srcIdx === -1 || targetIdx === -1) return;
+  const [moved] = groupItems.splice(srcIdx, 1);
+  const newTargetIdx = groupItems.findIndex(w => w.id === targetId);
+  const insertIdx = position === 'before' ? newTargetIdx : newTargetIdx + 1;
+  groupItems.splice(insertIdx, 0, moved);
+  wishList = [...others, ...groupItems];
+  localStorage.setItem('unipulse_wish', JSON.stringify(wishList));
+  loadWishTable();
+}
+
+// ── 浏览模式切换 ──
+function switchBrowseMode(mode) {
+  browseMode = mode;
+  localStorage.setItem('unipulse_browse_mode', mode);
+  document.querySelectorAll('.mode-switch-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  if (mode === 'major') {
+    navigate('major-browse');
+  } else {
+    navigate('universities');
+  }
+}
+
+async function loadMajorBrowse() {
+  try {
+    const p = await apiGet('/majors');
+    const majorGrid = $('majorBrowseGrid');
+    if (!majorGrid) return;
+    majorGrid.innerHTML = p.map(pr => `
+      <div class="major-browse-card" data-page="program-detail" data-name="${encodeURIComponent(pr.name)}">
+        <div class="major-browse-icon">${pr.icon || '📚'}</div>
+        <div class="major-browse-name">${esc(pr.name)}</div>
+        <div class="major-browse-count">${pr.count || 0}所高校</div>
+      </div>`).join('');
+    // Update mode buttons
+    document.querySelectorAll('.mode-switch-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === 'major'));
+  } catch(e) { toast('加载专业列表失败'); }
+}
 
 // ══════════════════════════════════════
 // ── 发帖功能 ──
