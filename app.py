@@ -246,8 +246,9 @@ def init_db():
 
         for u in UNIVERSITIES:
             c.execute("""INSERT OR REPLACE INTO universities
-                (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags,province_scores)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags,province_scores,
+                 address,phone,website,founded_year,campus_area,student_count,faculty_count,doctoral_programs,master_programs,national_key_programs,postdoc_stations,academicians,dormitory,canteen,campus_life,notable_alumni,motto,school_nature,affiliation)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (u["id"],u["name"],u["cn"],u["loc"],u["region"],u["country"],
                  u.get("logo",""),u["initials"],
                  u.get("score",0),u["trend"],u["trendV"],u["stars"],u["reviews"],u["rank"],
@@ -256,7 +257,14 @@ def init_db():
                  u["gaokao_score"],u["tuition"],
                  u["employment_rate"],u["avg_salary"],
                  json.dumps(u.get("metrics",{}),ensure_ascii=False),json.dumps(u.get("tags",[]),ensure_ascii=False),
-                 json.dumps(u.get("province_scores",{}),ensure_ascii=False)))
+                 json.dumps(u.get("province_scores",{}),ensure_ascii=False),
+                 u.get("address",""),u.get("phone",""),u.get("website",""),u.get("founded_year",0),
+                 str(u.get("campus_area","")),str(u.get("student_count","")),str(u.get("faculty_count","")),
+                 u.get("doctoral_programs",0),u.get("master_programs",0),u.get("national_key_programs",0),
+                 u.get("postdoc_stations",0),u.get("academicians",0),
+                 u.get("dormitory",""),u.get("canteen",""),u.get("campus_life",""),
+                 json.dumps(u.get("notable_alumni",[]),ensure_ascii=False),
+                 u.get("motto",""),u.get("school_nature",""),u.get("affiliation","")))
 
         for p in PROGRAMS:
             c.execute("INSERT OR REPLACE INTO programs (name,icon,univs) VALUES (?,?,?)",
@@ -535,6 +543,7 @@ def get_university(uni_id: int):
     d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
     d["tags"] = json.loads(d["tags"]) if d["tags"] else []
     d["province_scores"] = json.loads(d["province_scores"]) if d.get("province_scores") else {}
+    d["notable_alumni"] = json.loads(d["notable_alumni"]) if d.get("notable_alumni") else []
     # Get employment data for this university
     emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uni_id,)).fetchall()
     d["programs"] = [dict(e) for e in emp]
