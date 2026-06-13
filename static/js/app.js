@@ -162,7 +162,7 @@ function renderUniCard(u, showChance = false) {
     <button class="uni-card-fav ${isFav?'active':''}" onclick="event.stopPropagation();toggleFav(${u.id},this)">⭐</button>
     ${chance ? `<div class="uni-card-chance-badge ${chance.cls}">${chance.text}</div>` : ''}
     <div class="uni-card-header">
-      <div class="uni-card-name">${esc(u.cn)}</div>
+      <div class="uni-card-name">${esc(u.name)}</div>
       <span class="uni-card-level ${getLevelClass(u.level)}">${u.level.split('/')[0]}</span>
     </div>
     <div class="uni-card-meta">
@@ -178,8 +178,8 @@ function renderUniCard(u, showChance = false) {
       <span class="uni-stat">⭐${u.stars}</span>
     </div>
     <div class="uni-card-actions">
-      <button class="btn btn-xs ${isInWish?'btn-primary':'btn-ghost'}" onclick="event.stopPropagation();addToWish(${u.id},'${esc(u.cn)}',${u.gaokao_score})">${isInWish?'✅ 已加志愿':'+志愿表'}</button>
-      <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();addToCompare(${u.id},'${esc(u.cn)}',${u.gaokao_score})">⚖️</button>
+      <button class="btn btn-xs ${isInWish?'btn-primary':'btn-ghost'}" onclick="event.stopPropagation();addToWish(${u.id},'${esc(u.name)}',${u.gaokao_score})">${isInWish?'✅ 已加志愿':'+志愿表'}</button>
+      <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();addToCompare(${u.id},'${esc(u.name)}',${u.gaokao_score})">⚖️</button>
     </div>
   </div>`;
 }
@@ -235,7 +235,7 @@ async function loadUniDetail(id) {
       <button class="btn btn-ghost btn-sm" onclick="navigate('universities')" style="margin-bottom:1rem">← 返回高校列表</button>
       <div class="uni-detail-header">
         <div class="uni-detail-info">
-          <h1>${esc(u.cn)}</h1>
+          <h1>${esc(u.name)}</h1>
           <div style="color:var(--text3);font-size:0.9rem;margin-bottom:0.3rem">${esc(u.name)}</div>
           <div class="uni-detail-tags">
             ${(u.tags||[]).map(t => `<span class="tag tag-${tagType(t.text)}">${t.text}</span>`).join('')}
@@ -248,7 +248,7 @@ async function loadUniDetail(id) {
           <div class="big">${u.gaokao_score}</div>
           <div class="label">排名 #${u.rank}</div>
           <div style="margin-top:0.8rem">
-            <button class="btn btn-ghost btn-sm" onclick="addToCompare(${u.id},'${esc(u.cn)}',${u.gaokao_score})">⚖️ 加入对比</button>
+            <button class="btn btn-ghost btn-sm" onclick="addToCompare(${u.id},'${esc(u.name)}',${u.gaokao_score})">⚖️ 加入对比</button>
           </div>
         </div>
       </div>
@@ -493,16 +493,16 @@ async function loadProgramDetail(name) {
       <button class="btn btn-ghost btn-sm" onclick="navigate('programs')" style="margin-bottom:1rem">← 返回专业列表</button>
       <h1>${d.icon} ${esc(d.name)}</h1>
       <p style="color:var(--text2);margin:0.5rem 0 1rem">共 ${unis.length} 所高校开设此专业</p>
-      <div class="uni-grid">${unis.slice(0,20).map(cn => {
+      <div class="uni-grid">${unis.slice(0,20).map(uniName => {
         const e = emp[cn];
         if (e) {
           return `<div class="uni-card" data-page="uni-detail" data-id="${e.uni.id}">
-            <div class="uni-card-header"><div class="uni-card-name">${esc(cn)}</div><span class="uni-card-level ${getLevelClass(e.uni.level)}">${e.uni.level.split('/')[0]}</span></div>
+            <div class="uni-card-header"><div class="uni-card-name"></div><span class="uni-card-level ${getLevelClass(e.uni.level)}">${e.uni.level.split('/')[0]}</span></div>
             <div class="uni-card-meta"><span>📍${e.uni.loc}</span><span>#${e.uni.rank}</span></div>
             ${e.programs.length > 0 ? `<div class="uni-card-stats">${e.programs.slice(0,2).map(p => `<span class="uni-stat">起薪 <strong>${formatSalary(p.salary_entry)}</strong></span>`).join('')}</div>` : ''}
           </div>`;
         }
-        return `<div class="uni-card"><div class="uni-card-name">${esc(cn)}</div></div>`;
+        return `<div class="uni-card"><div class="uni-card-name"></div></div>`;
       }).join('')}</div>`;
   } catch(e) { toast('加载失败'); }
 }
@@ -657,7 +657,7 @@ function formatTimeAgo(dateStr) {
 
 async function loadPostDetail(id) {
   try {
-    const p = await apiGet('/forum/posts/' + id);
+    const p = await apiGet('/forum/posts/' + id + '?session_id=' + sessionId);
     const timeAgo = formatTimeAgo(p.created_at);
     const bookmarked = isBookmarked(id);
     $('postDetailContent').innerHTML = `
@@ -678,6 +678,8 @@ async function loadPostDetail(id) {
         <div class="post-detail-actions">
           <button class="btn btn-sm btn-ghost" onclick="likePost(${id})">👍 点赞 (${p.likes})</button>
           <button class="btn btn-sm btn-ghost bookmark-btn" data-id="${id}" onclick="toggleBookmark(${id})">${bookmarked?'⭐ 已收藏':'☆ 收藏'}</button>
+          ${p.can_edit ? `<button class="btn btn-sm btn-ghost" onclick="editPost(${id})">✏️ 编辑</button>` : ''}
+          ${p.can_edit ? `<button class="btn btn-sm btn-ghost" onclick="deletePost(${id})" style="color:var(--red)">🗑️ 删除</button>` : ''}
           <button class="btn btn-sm btn-ghost" onclick="reportPost(${id})" style="color:var(--text3)">🚩 举报</button>
         </div>
         <h3 style="margin:1.5rem 0 0.8rem">评论 (${p.comments.length})</h3>
@@ -740,6 +742,37 @@ async function submitComment(e, postId) {
   } catch(e) { toast('评论失败'); }
 }
 
+// ── 帖子编辑/删除 ──
+async function editPost(postId) {
+  try {
+    const p = await apiGet('/forum/posts/' + postId);
+    const newTitle = prompt('修改标题：', p.title);
+    if (newTitle === null) return;
+    const newContent = prompt('修改内容：', p.content);
+    if (newContent === null) return;
+    await fetch(API + '/forum/posts/' + postId + '/edit', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title: newTitle, content: newContent, session_id: sessionId})
+    }).then(r => r.json());
+    toast('编辑成功');
+    loadPostDetail(postId);
+  } catch(e) { toast('编辑失败'); }
+}
+
+async function deletePost(postId) {
+  if (!confirm('确定要删除这篇帖子吗？此操作不可恢复。')) return;
+  try {
+    await fetch(API + '/forum/posts/' + postId, {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: sessionId})
+    }).then(r => r.json());
+    toast('已删除');
+    navigate('forum');
+  } catch(e) { toast('删除失败'); }
+}
+
 // ── AI选校 ──
 async function submitAiReport(e) {
   e.preventDefault();
@@ -778,7 +811,7 @@ function renderAiReport(r) {
         <div class="report-group">${list.map(u => {
           const gap = u.gaokao_score - r.score;
           return `<div class="report-card" data-page="uni-detail" data-id="${u.id}">
-            <div class="rc-name">${esc(u.cn)}</div>
+            <div class="rc-name">${esc(u.name)}</div>
             <div class="rc-score">${u.gaokao_score}分 · ${u.loc} · ${u.level.split('/')[0]}</div>
             <span class="rc-gap ${g.cls}">${gap>0?'高'+gap+'分':'低'+Math.abs(gap)+'分'}</span>
           </div>`;
