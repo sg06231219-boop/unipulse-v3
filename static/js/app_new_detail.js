@@ -23,8 +23,8 @@ async function loadUniDetailV2(id) {
       <!-- 顶部：学校名+标签+核心数据 -->
       <div class="uni-detail-header">
         <div class="uni-detail-info">
-          <h1>${esc(u.cn)}</h1>
-          ${u.name && u.name !== u.cn ? `<div style="color:var(--text3);font-size:0.9rem;margin-bottom:0.3rem">${esc(u.name)}</div>` : ''}
+          <h1>${esc(u.name)}</h1>
+          ${u.name && u.name !== u.name ? `<div style="color:var(--text3);font-size:0.9rem;margin-bottom:0.3rem">${esc(u.name)}</div>` : ''}
           <div class="uni-detail-tags">
             ${(u.tags||[]).map(t => `<span class="tag tag-${tagType(t.text)}">${t.text}</span>`).join('')}
           </div>
@@ -37,7 +37,7 @@ async function loadUniDetailV2(id) {
           <div class="big">${u.gaokao_score}</div>
           <div class="label">排名 #${u.rank}</div>
           <div style="margin-top:0.8rem;display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:center">
-            <button class="btn btn-ghost btn-sm" onclick="addToCompare(${u.id},'${esc(u.cn)}',${u.gaokao_score})">⚖️ 对比</button>
+            <button class="btn btn-ghost btn-sm" onclick="addToCompare(${u.id},'${esc(u.name)}',${u.gaokao_score})">⚖️ 对比</button>
             <button class="btn btn-ghost btn-sm" onclick="toggleFav(${u.id},this)">⭐ 收藏</button>
             ${u.website ? `<a href="${esc(u.website)}" target="_blank" class="btn btn-ghost btn-sm">🌐 官网</a>` : ''}
           </div>
@@ -348,7 +348,7 @@ function renderCompareResultV2(unis) {
   $('compareResult').innerHTML = `
     <div class="compare-result">
       <table class="compare-table">
-        <thead><tr><th></th>${unis.map(u=>`<th>${esc(u.cn)}</th>`).join('')}</tr></thead>
+        <thead><tr><th></th>${unis.map(u=>`<th>${esc(u.name)}</th>`).join('')}</tr></thead>
         <tbody>${[...fields, ...extraFields].map(f => {
           const vals = unis.map(u => u[f.key]);
           const numVals = vals.filter(v => typeof v === 'number');
@@ -403,8 +403,8 @@ function initCompareSearch() {
         const r = await apiGet('/university/search?q=' + encodeURIComponent(q) + '&limit=8');
         if (r.length === 0) { dropdown.innerHTML = '<div class="dropdown-item">未找到</div>'; dropdown.classList.remove('hidden'); return; }
         dropdown.innerHTML = r.map(u => `
-          <div class="dropdown-item" onclick="addCompareFromSearch(${u.id},'${esc(u.cn)}',${u.gaokao_score||0})">
-            <span class="dd-name">${esc(u.cn)}</span>
+          <div class="dropdown-item" onclick="addCompareFromSearch(${u.id},'${esc(u.name)}',${u.gaokao_score||0})">
+            <span class="dd-name">${esc(u.name)}</span>
             <span class="dd-meta">${esc(u.loc)} · ${esc(u.level)} · ${u.gaokao_score||'-'}分</span>
           </div>`).join('');
         dropdown.classList.remove('hidden');
