@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, re, sqlite3, datetime, random, secrets, threading
 
-app = FastAPI(title="UniPulse v3", version="3.6.0")
+app = FastAPI(title="UniPulse v3", version="3.6.1")
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -445,7 +445,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.6.0","service":"UniPulse"}
+    return {"status":"ok","version":"3.6.1","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
