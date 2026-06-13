@@ -242,6 +242,7 @@ def init_db():
         seed_path = os.path.join(DATA_DIR, "seed_backup.json")
         if not os.path.exists(seed_path):
             seed_path = os.path.join(os.path.dirname(__file__), "seed.json")
+        seed_data = None
         if os.path.exists(seed_path):
             with open(seed_path, "r", encoding="utf-8") as f:
                 seed_data = json.load(f)
@@ -252,10 +253,19 @@ def init_db():
         else:
             # Fallback to Python module if JSON not found
             from seed import UNIVERSITIES, PROGRAMS, FORUM_POSTS, FORUM_COMMENTS
-        try:
-            from employment_data import UNI_PROGRAMS
-        except ImportError:
-            UNI_PROGRAMS = []
+        # Load employment data from seed.json or standalone file
+        UNI_PROGRAMS = seed_data.get("employment", []) if seed_data else []
+        if not UNI_PROGRAMS:
+            emp_path = os.path.join(os.path.dirname(__file__), "employment.json")
+            if os.path.exists(emp_path):
+                with open(emp_path, "r", encoding="utf-8") as f:
+                    emp_data = json.load(f)
+                    UNI_PROGRAMS = emp_data if isinstance(emp_data, list) else emp_data.get("employment", [])
+            else:
+                try:
+                    from employment_data import UNI_PROGRAMS
+                except ImportError:
+                    UNI_PROGRAMS = []
 
         for u in UNIVERSITIES:
             c.execute("""INSERT OR REPLACE INTO universities
