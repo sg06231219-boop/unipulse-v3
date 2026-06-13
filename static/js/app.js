@@ -25,7 +25,7 @@ function navigate(page, params = {}) {
   window.scrollTo({top:0,behavior:'smooth'});
   if (page === 'home') loadHome();
   else if (page === 'universities') loadUniversities(1);
-  else if (page === 'uni-detail') loadUniDetailV2(params.id);
+  else if (page === 'uni-detail') loadUniDetail(params.id);
   else if (page === 'programs') loadProgramsFull();
   else if (page === 'program-detail') loadProgramDetail(params.name);
   else if (page === 'compare') loadCompare();
@@ -342,32 +342,96 @@ function switchDetailTab(tab, btn) {
 }
 
 function renderProvinceScores(u) {
-  const ps = u.province_scores || {};
-  const keys = Object.keys(ps);
-  if (keys.length === 0) return '<p style="color:var(--text3)">暂无省分数线数据</p>';
-  const sorted = keys.sort();
-  const rows = sorted.map(prov => {
-    const score = ps[prov];
-    const gap = userScore ? userScore - score : null;
-    let cls = '', label = '';
-    if (gap !== null) {
-      if (gap >= 20) { cls = 'chance-bao'; label = '保'; }
-      else if (gap >= 0) { cls = 'chance-wen'; label = '稳'; }
-      else if (gap >= -20) { cls = 'chance-chong'; label = '冲'; }
-      else { cls = 'chance-none'; label = '难'; }
-    }
-    return '<tr>' +
-      '<td>' + esc(prov) + '</td>' +
-      '<td><strong>' + score + '</strong></td>' +
-      (gap !== null ? '<td style="color:' + (gap>=0?'var(--green)':'var(--red)') + '">' + (gap>=0?'+':'') + gap + '</td><td><span class="uni-card-chance ' + cls + '">' + label + '</span></td>' : '<td>-</td><td>-</td>') +
-      '</tr>';
-  }).join('');
-  return '<div style="margin-top:0.5rem">' +
-    (userScore ? '<p style="color:var(--text2);margin-bottom:0.8rem;font-size:0.88rem">💡 以你的 <strong>' + userScore + '分</strong> 为基准，标红=冲、标绿=保</p>' : '<p style="color:var(--text2);margin-bottom:0.8rem;font-size:0.88rem">💡 在首页输入你的分数，可查看各省份录取概率</p>') +
-    '<div style="overflow-x:auto"><table class="emp-table"><thead><tr><th>省份</th><th>分数线</th><th>与我的差距</th><th>录取评估</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  // Return placeholder, then async load major-specific scores
+  const containerId = 'provScoresContainer';
+  setTimeout(() => loadProvinceMajorScores(u.id, containerId), 100);
+  return '<div id="' + containerId + '" style="margin-top:0.5rem">' +
+    '<p style="color:var(--text3)">加载分数线数据中...</p>' +
+    '</div>';
 }
 
-function renderUniInfo(u) {
+async function loadProvinceMajorScores(uniId, containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  try {
+    const data = await apiGet('/universities/' + uniId + '/province-scores');
+    const baseScores = data.base_scores || {};
+    const majorScores = data.major_scores || {};
+    const provinces = Object.keys(baseScores).sort();
+    if (provinces.length === 0) {
+      el.innerHTML = '<p style="color:var(--text3)">暂无省分数线数据</p>';
+      return;
+    }
+
+    let html = userScore
+      ? '<p style="color:var(--text2);margin-bottom:0.8rem;font-size:0.88rem">💡 以你的 <strong>' + userScore + '分</strong> 为基准，点击省份可展开专业分数线</p>'
+      : '<p style="color:var(--text2);margin-bottom:0.8rem;font-size:0.88rem">💡 在首页输入你的分数，可查看各省份录取概率 | 点击省份展开专业分数线</p>';
+
+    html += '<div style="overflow-x:auto"><table class="emp-table"><thead><tr><th style="width:30px"></th><th>省份</th><th>校线</th>';
+    if (userScore) html += '<th>差距</th><th>评估</th>';
+    html += '</tr></thead><tbody>';
+
+    for (const prov of provinces) {
+      const base = baseScores[prov];
+      const gap = userScore ? userScore - base : null;
+      const chance = gap !== null ? getChanceInfo(gap) : null;
+      const majors = majorScores[prov] || [];
+      const hasMajors = majors.length > 0;
+      const rowId = 'prov_' + prov.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '');
+
+      html += '<tr style="cursor:pointer" onclick="toggleProvMajors(\'' + rowId + '\')">';
+      html += '<td style="text-align:center">' + (hasMajors ? '▶' : '') + '</td>';
+      html += '<td>' + esc(prov) + '</td>';
+      html += '<td><strong>' + base + '</strong></td>';
+      if (userScore) {
+        html += '<td style="color:' + (gap >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (gap >= 0 ? '+' : '') + gap + '</td>';
+        html += '<td><span class="uni-card-chance ' + (chance ? chance.cls : '') + '">' + (chance ? chance.text : '-') + '</span></td>';
+      }
+      html += '</tr>';
+
+      // Major rows (hidden by default)
+      if (hasMajors) {
+        html += '<tr id="' + rowId + '" style="display:none"><td colspan="' + (userScore ? 5 : 3) + '" style="padding:0">';
+        html += '<table class="emp-table" style="margin:0;font-size:0.85rem;background:rgba(255,255,255,0.02)"><thead><tr><th>专业</th><th>科类</th><th>分数线</th>';
+        if (userScore) html += '<th>差距</th><th>评估</th>';
+        html += '</tr></thead><tbody>';
+        for (const m of majors) {
+          const mGap = userScore ? userScore - m.score : null;
+          const mChance = mGap !== null ? getChanceInfo(mGap) : null;
+          html += '<tr>';
+          html += '<td>' + esc(m.major) + '</td>';
+          html += '<td><span class="tag tag-' + (m.type === '理科' ? 'accent2' : m.type === '文科' ? 'warning' : 'info') + '" style="font-size:0.75rem;padding:1px 6px">' + m.type + '</span></td>';
+          html += '<td>' + m.score + '</td>';
+          if (userScore) {
+            html += '<td style="color:' + (mGap >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (mGap >= 0 ? '+' : '') + mGap + '</td>';
+            html += '<td><span class="uni-card-chance ' + (mChance ? mChance.cls : '') + '" style="font-size:0.75rem">' + (mChance ? mChance.text : '-') + '</span></td>';
+          }
+          html += '</tr>';
+        }
+        html += '</tbody></table></td></tr>';
+      }
+    }
+
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = '<p style="color:var(--text3)">加载失败: ' + esc(e.message) + '</p>';
+  }
+}
+
+function toggleProvMajors(rowId) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  const isHidden = row.style.display === 'none';
+  row.style.display = isHidden ? 'table-row' : 'none';
+  // Toggle arrow in previous row
+  const prevRow = row.previousElementSibling;
+  if (prevRow) {
+    const arrow = prevRow.querySelector('td');
+    if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
+  }
+};
+  function renderUniInfo(u) {
   let html = '<div class="uni-info-grid">';
   const fields = [
     ['motto', '校训', '🎓'],
