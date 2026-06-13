@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, re, sqlite3, datetime, random, secrets, threading
 
-app = FastAPI(title="UniPulse v3", version="3.7.0")
+app = FastAPI(title="UniPulse v3", version="3.8.0")
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -47,42 +47,23 @@ def _auto_update_worker():
                 pass
 
 def _backup_to_seed_json():
-    """备份当前DB到seed_backup.json"""
+    """备份当前DB到seed_backup.json（限制1MB避免OOM）"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
-        unis = conn.execute("SELECT * FROM universities").fetchall()
-        uni_list = []
-        for u in unis:
-            d = dict(u)
-            for f in ["metrics", "tags", "province_scores"]:
-                if isinstance(d.get(f), str):
-                    try: d[f] = json.loads(d[f])
-                    except: d[f] = {}
-            uni_list.append(d)
-        progs = conn.execute("SELECT * FROM programs").fetchall()
-        prog_list = []
-        for p in progs:
-            d = dict(p)
-            if isinstance(d.get("univs"), str):
-                try: d["univs"] = json.loads(d["univs"])
-                except: d["univs"] = []
-            prog_list.append(d)
-        seed_path = os.path.join(os.path.dirname(__file__), "seed.json")
-        existing_posts, existing_comments = [], []
-        if os.path.exists(seed_path):
-            with open(seed_path, "r", encoding="utf-8") as f:
-                old_seed = json.load(f)
-            existing_posts = old_seed.get("forum_posts", [])
-            existing_comments = old_seed.get("forum_comments", [])
+        unis = conn.execute("SELECT id,cn,loc,region,country,level,type,gaokao_score,employment_rate,avg_salary,stars,rank FROM universities").fetchall()
+        uni_list = [dict(u) for u in unis]
         seed_data = {
-            "universities": uni_list, "programs": prog_list, "employment": [],
-            "forum_posts": existing_posts, "forum_comments": existing_comments,
-            "version": "3.5.0", "updated_at": datetime.datetime.now().isoformat(),
+            "universities": uni_list,
+            "version": "3.8.0", "updated_at": datetime.datetime.now().isoformat(),
         }
         backup_path = os.path.join(DATA_DIR, "seed_backup.json")
+        content = json.dumps(seed_data, ensure_ascii=False)
+        if len(content) > 1_000_000:
+            logger.warning(f"Backup too large ({len(content)} bytes), skipping")
+            return
         with open(backup_path, "w", encoding="utf-8") as f:
-            json.dump(seed_data, f, ensure_ascii=False, indent=2)
+            f.write(content)
     finally:
         conn.close()
 
@@ -97,8 +78,8 @@ def perform_data_update():
         for u in all_unis:
             updates = []
             if random.random() < 0.3:
-                delta = round(random.uniform(-0.5, 0.8), 1)
-                new_rate = max(60, min(100, (u["employment_rate"] or 85) + delta))
+                delta = round(random.uniform(-0.005, 0.008), 3)
+                new_rate = max(0.60, min(1.0, (u["employment_rate"] or 0.85) + delta))
                 updates.append(("employment_rate", new_rate))
             if random.random() < 0.2:
                 delta = int(random.uniform(-500, 800))
@@ -231,6 +212,19 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         source TEXT, status TEXT, updated_count INTEGER,
         elapsed REAL, details TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS post_bookmarks (
+        session_id TEXT NOT NULL,
+        post_id INTEGER NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(session_id, post_id)
+    );
+    CREATE TABLE IF NOT EXISTS post_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        post_id INTEGER NOT NULL,
+        reason TEXT DEFAULT '',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -455,7 +449,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.7.0","service":"UniPulse"}
+    return {"status":"ok","version":"3.8.0","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
@@ -550,6 +544,9 @@ def list_universities(
         d = dict(r)
         d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
         d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        # Normalize employment_rate to percentage
+        if d.get("employment_rate") and d["employment_rate"] <= 1:
+            d["employment_rate"] = round(d["employment_rate"] * 100, 1)
         # Don't include province_scores in list view (too large)
         d.pop("province_scores", None)
         result.append(d)
@@ -567,6 +564,9 @@ def get_university(uni_id: int):
     d["tags"] = json.loads(d["tags"]) if d["tags"] else []
     d["province_scores"] = json.loads(d["province_scores"]) if d.get("province_scores") else {}
     d["notable_alumni"] = json.loads(d["notable_alumni"]) if d.get("notable_alumni") else []
+    # Normalize employment_rate to percentage (0-1 → 0-100)
+    if d.get("employment_rate") and d["employment_rate"] <= 1:
+        d["employment_rate"] = round(d["employment_rate"] * 100, 1)
     # Get employment data for this university
     emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uni_id,)).fetchall()
     d["programs"] = [dict(e) for e in emp]
@@ -601,7 +601,7 @@ def get_program(name: str):
     # Get employment data
     emp_data = {}
     for u in univs:
-        uni = conn.execute("SELECT id,cn,loc,level,type,rank FROM universities WHERE cn=?", (u,)).fetchone()
+        uni = conn.execute("SELECT id,name,cn,loc,level,type,rank FROM universities WHERE name=?", (u,)).fetchone()
         if uni:
             emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uni["id"],)).fetchall()
             emp_data[u] = {"uni":dict(uni),"programs":[dict(e) for e in emp]}
@@ -632,9 +632,9 @@ def list_employment(
     for r in rows:
         d = dict(r)
         # Add university name
-        uni = conn.execute("SELECT cn,loc,level FROM universities WHERE id=?", (r["uni_id"],)).fetchone()
+        uni = conn.execute("SELECT name,cn,loc,level FROM universities WHERE id=?", (r["uni_id"],)).fetchone()
         if uni:
-            d["uni_cn"] = uni["cn"]; d["uni_loc"] = uni["loc"]; d["uni_level"] = uni["level"]
+            d["uni_name"] = uni["name"]; d["uni_cn"] = uni["cn"]; d["uni_loc"] = uni["loc"]; d["uni_level"] = uni["level"]
         result.append(d)
     conn.close()
     return result
@@ -907,13 +907,13 @@ def stats():
     emp_count = conn.execute("SELECT COUNT(*) FROM employment").fetchone()[0]
     post_count = conn.execute("SELECT COUNT(*) FROM forum_posts").fetchone()[0]
     avg_salary = conn.execute("SELECT ROUND(AVG(avg_salary)) FROM universities WHERE avg_salary > 0").fetchone()[0]
-    avg_emp_rate = conn.execute("SELECT ROUND(AVG(employment_rate),1) FROM universities").fetchone()[0]
+    avg_emp_rate = conn.execute("SELECT ROUND(AVG(employment_rate)*100,1) FROM universities WHERE employment_rate > 0").fetchone()[0]
     regions = conn.execute("SELECT region, COUNT(*) as cnt FROM universities GROUP BY region ORDER BY cnt DESC").fetchall()
     levels = conn.execute("""
         SELECT
             SUM(CASE WHEN level LIKE '%985%' THEN 1 ELSE 0 END) as c985,
             SUM(CASE WHEN level LIKE '%211%' AND level NOT LIKE '%985%' THEN 1 ELSE 0 END) as c211,
-            SUM(CASE WHEN level LIKE '%双一流%' AND level NOT LIKE '%985%' AND level NOT LIKE '%211%' THEN 1 ELSE 0 END) as cdy,
+            SUM(CASE WHEN level LIKE '%双一流%' THEN 1 ELSE 0 END) as cdy,
             COUNT(*) as total
         FROM universities
     """).fetchone()
@@ -961,6 +961,8 @@ def ai_report(
         d = dict(r)
         d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
         d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        if d.get("employment_rate") and d["employment_rate"] <= 1:
+            d["employment_rate"] = round(d["employment_rate"] * 100, 1)
         gap = d["gaokao_score"] - score
         if gap > 5:
             suggestions["冲"].append(d)
@@ -984,6 +986,8 @@ def ai_report(
                 d = dict(r)
                 d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
                 d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+                if d.get("employment_rate") and d["employment_rate"] <= 1:
+                    d["employment_rate"] = round(d["employment_rate"] * 100, 1)
                 if not any(s["id"] == d["id"] for group in suggestions.values() for s in group):
                     suggestions["稳"].append(d)
 
@@ -1015,7 +1019,7 @@ def score_distribution():
     result = []
     for lo,hi in ranges:
         cnt = conn.execute("SELECT COUNT(*) FROM universities WHERE gaokao_score BETWEEN ? AND ?", (lo,hi)).fetchone()[0]
-        unis = conn.execute("SELECT id,cn,gaokao_score,level,type,loc FROM universities WHERE gaokao_score BETWEEN ? AND ? ORDER BY gaokao_score DESC LIMIT 5", (lo,hi)).fetchall()
+        unis = conn.execute("SELECT id,name,cn,gaokao_score,level,type,loc FROM universities WHERE gaokao_score BETWEEN ? AND ? ORDER BY gaokao_score DESC LIMIT 5", (lo,hi)).fetchall()
         result.append({"range":f"{lo}-{hi}","count":cnt,"samples":[dict(u) for u in unis]})
     conn.close()
     return result
@@ -1025,7 +1029,7 @@ def admission_chance(score: int, uni_id: Optional[int] = None, region: Optional[
     """计算录取概率（简化模型：基于分数线差值）"""
     conn = get_db()
     if uni_id:
-        u = conn.execute("SELECT gaokao_score, cn FROM universities WHERE id=?", (uni_id,)).fetchone()
+        u = conn.execute("SELECT gaokao_score, name FROM universities WHERE id=?", (uni_id,)).fetchone()
         if not u:
             conn.close(); raise HTTPException(404, "University not found")
         gap = score - u["gaokao_score"]
@@ -1038,10 +1042,10 @@ def admission_chance(score: int, uni_id: Optional[int] = None, region: Optional[
         elif gap >= -30: chance, level = 0.10, "困难"
         else: chance, level = 0.03, "极难"
         conn.close()
-        return {"uni_id":uni_id,"uni_name":u["cn"],"score":score,"cutoff":u["gaokao_score"],"gap":gap,"chance":chance,"level":level}
+        return {"uni_id":uni_id,"uni_name":u["name"],"score":score,"cutoff":u["gaokao_score"],"gap":gap,"chance":chance,"level":level}
     else:
         # Return suggestions by score range
-        rows = conn.execute("SELECT id,cn,gaokao_score,level,loc FROM universities WHERE gaokao_score BETWEEN ? AND ? ORDER BY ABS(gaokao_score-?) ASC LIMIT 15", (score-40,score+30,score)).fetchall()
+        rows = conn.execute("SELECT id,name,cn,gaokao_score,level,loc FROM universities WHERE gaokao_score BETWEEN ? AND ? ORDER BY ABS(gaokao_score-?) ASC LIMIT 15", (score-40,score+30,score)).fetchall()
         results = []
         for r in rows:
             gap = score - r["gaokao_score"]
@@ -1053,12 +1057,13 @@ def admission_chance(score: int, uni_id: Optional[int] = None, region: Optional[
             elif gap >= -20: c,l = 0.20,"较难"
             elif gap >= -30: c,l = 0.10,"困难"
             else: c,l = 0.03,"极难"
-            results.append({"uni_id":r["id"],"uni_name":r["cn"],"score":score,"cutoff":r["gaokao_score"],"gap":gap,"chance":c,"level":l,"loc":r["loc"]})
+            results.append({"uni_id":r["id"],"uni_name":r["name"],"score":score,"cutoff":r["gaokao_score"],"gap":gap,"chance":c,"level":l,"loc":r["loc"]})
         conn.close()
         return {"score":score,"results":results}
 
 @app.post("/api/compare")
-def compare_univers(ids: list[int]):
+@app.get("/api/compare")
+def compare_univers(ids: list[int] = Query([])):
     """院校对比：多校指标并列展示"""
     conn = get_db()
     result = []
@@ -1068,6 +1073,9 @@ def compare_univers(ids: list[int]):
             d = dict(r)
             d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else {}
             d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+            # Normalize employment_rate to percentage
+            if d.get("employment_rate") and d["employment_rate"] <= 1:
+                d["employment_rate"] = round(d["employment_rate"] * 100, 1)
             emp = conn.execute("SELECT * FROM employment WHERE uni_id=?", (uid,)).fetchall()
             d["programs"] = [dict(e) for e in emp]
             result.append(d)
@@ -1106,7 +1114,7 @@ def admin_stats():
 @app.get("/api/university/search")
 def search_universities_api(q: str = "", limit: int = 10):
     conn = get_db()
-    rows = conn.execute("SELECT id,cn,loc,level,type,gaokao_score FROM universities WHERE cn LIKE ? OR name LIKE ? ORDER BY rank ASC LIMIT ?", (f"%{q}%",f"%{q}%",limit)).fetchall()
+    rows = conn.execute("SELECT id,name,cn,loc,level,type,gaokao_score FROM universities WHERE name LIKE ? OR cn LIKE ? ORDER BY rank ASC LIMIT ?", (f"%{q}%",f"%{q}%",limit)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -1136,7 +1144,7 @@ def get_province_scores(uni_id: int):
         raise HTTPException(404, "University not found")
     d = dict(row)
     conn.close()
-    uni_name = d.get("cn", "")
+    uni_name = d.get("name", "")
     gaokao_score = d.get("gaokao_score", 500) or 500
     ps_raw = d.get("province_scores")
     scores = {}
@@ -1472,7 +1480,7 @@ def export_wish_table(session_id: str, format: str = "json"):
         output.write("分组,序号,院校名称,参考分数线,层次,类型,地区,就业率,平均起薪,排名\n")
         for group in ["冲", "稳", "保"]:
             for i, u in enumerate(data[group], 1):
-                output.write(f"{group},{i},{u['cn']},{u['gaokao_score']},{u['level']},{u['type']},{u['loc']},{u['employment_rate']}%,{u['avg_salary']},{u['rank']}\n")
+                output.write(f"{group},{i},{u['name']},{u['gaokao_score']},{u['level']},{u['type']},{u['loc']},{round(u['employment_rate']*100) if u['employment_rate'] and u['employment_rate']<=1 else u['employment_rate']}%,{u['avg_salary']},{u['rank']}\n")
         from fastapi.responses import Response
         return Response(content=output.getvalue(), media_type="text/csv; charset=utf-8-sig",
             headers={"Content-Disposition": f"attachment; filename=wish_table_{session_id[:8]}.csv"})
