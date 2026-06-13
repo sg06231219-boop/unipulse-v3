@@ -161,7 +161,16 @@ def init_db():
         gaokao_score INTEGER, tuition INTEGER,
         employment_rate REAL, avg_salary INTEGER,
         metrics TEXT, tags TEXT,
-        province_scores TEXT
+        province_scores TEXT,
+        address TEXT DEFAULT '', phone TEXT DEFAULT '', website TEXT DEFAULT '',
+        founded_year INTEGER DEFAULT 0, campus_area TEXT DEFAULT '',
+        student_count TEXT DEFAULT '', faculty_count TEXT DEFAULT '',
+        doctoral_programs INTEGER DEFAULT 0, master_programs INTEGER DEFAULT 0,
+        national_key_programs INTEGER DEFAULT 0, postdoc_stations INTEGER DEFAULT 0,
+        academicians INTEGER DEFAULT 0,
+        dormitory TEXT DEFAULT '', canteen TEXT DEFAULT '', campus_life TEXT DEFAULT '',
+        notable_alumni TEXT DEFAULT '', motto TEXT DEFAULT '',
+        school_nature TEXT DEFAULT '', affiliation TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS programs (
         name TEXT PRIMARY KEY, icon TEXT, univs TEXT
@@ -178,13 +187,17 @@ def init_db():
         title TEXT, category TEXT, author TEXT,
         content TEXT, views INTEGER DEFAULT 0,
         likes INTEGER DEFAULT 0, tags TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_pinned INTEGER DEFAULT 0, is_hidden INTEGER DEFAULT 0,
+        report_count INTEGER DEFAULT 0, session_id TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS forum_comments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         post_id INTEGER, author TEXT,
         text TEXT, likes INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_hidden INTEGER DEFAULT 0, report_count INTEGER DEFAULT 0,
+        session_id TEXT DEFAULT '',
         FOREIGN KEY(post_id) REFERENCES forum_posts(id)
     );
     CREATE TABLE IF NOT EXISTS favorites (
