@@ -247,10 +247,15 @@ def init_db():
         else:
             # Fallback to Python module if JSON not found
             from seed import UNIVERSITIES, PROGRAMS, FORUM_POSTS, FORUM_COMMENTS
-        # Load province_scores from standalone file
+        # Load province_scores from standalone file (supports .json.gz and .json)
         province_scores_data = {}
+        ps_gz_path = os.path.join(os.path.dirname(__file__), "province_scores.json.gz")
         ps_path = os.path.join(os.path.dirname(__file__), "province_scores.json")
-        if os.path.exists(ps_path):
+        if os.path.exists(ps_gz_path):
+            import gzip
+            with gzip.open(ps_gz_path, "rt", encoding="utf-8") as f:
+                province_scores_data = json.load(f)
+        elif os.path.exists(ps_path):
             with open(ps_path, "r", encoding="utf-8") as f:
                 province_scores_data = json.load(f)
 
