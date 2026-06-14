@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, re, sqlite3, datetime, random, secrets, threading
 
-app = FastAPI(title="UniPulse v3", version="3.10.0")
+app = FastAPI(title="UniPulse v3", version="3.11.0")
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -55,7 +55,7 @@ def _backup_to_seed_json():
         uni_list = [dict(u) for u in unis]
         seed_data = {
             "universities": uni_list,
-            "version": "3.10.0", "updated_at": datetime.datetime.now().isoformat(),
+            "version": "3.11.0", "updated_at": datetime.datetime.now().isoformat(),
         }
         backup_path = os.path.join(DATA_DIR, "seed_backup.json")
         content = json.dumps(seed_data, ensure_ascii=False)
@@ -247,6 +247,20 @@ def init_db():
         else:
             # Fallback to Python module if JSON not found
             from seed import UNIVERSITIES, PROGRAMS, FORUM_POSTS, FORUM_COMMENTS
+        # Load province_scores from standalone file
+        province_scores_data = {}
+        ps_path = os.path.join(os.path.dirname(__file__), "province_scores.json")
+        if os.path.exists(ps_path):
+            with open(ps_path, "r", encoding="utf-8") as f:
+                province_scores_data = json.load(f)
+
+        # Load university_details from standalone file
+        uni_details_data = {}
+        ud_path = os.path.join(os.path.dirname(__file__), "university_details.json")
+        if os.path.exists(ud_path):
+            with open(ud_path, "r", encoding="utf-8") as f:
+                uni_details_data = json.load(f)
+
         # Load employment data from seed.json or standalone file
         UNI_PROGRAMS = seed_data.get("employment", []) if seed_data else []
         if not UNI_PROGRAMS:
@@ -262,6 +276,10 @@ def init_db():
                     UNI_PROGRAMS = []
 
         for u in UNIVERSITIES:
+            # Merge province_scores from standalone file
+            ps = province_scores_data.get(str(u["id"]), u.get("province_scores", {}))
+            # Merge university_details from standalone file
+            details = uni_details_data.get(str(u["id"]), {})
             c.execute("""INSERT OR REPLACE INTO universities
                 (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags,province_scores,
                  address,phone,website,founded_year,campus_area,student_count,faculty_count,doctoral_programs,master_programs,national_key_programs,postdoc_stations,academicians,dormitory,canteen,campus_life,notable_alumni,motto,school_nature,affiliation)
@@ -270,18 +288,19 @@ def init_db():
                  u.get("logo",""),u["initials"],
                  u.get("score",0),u["trend"],u["trendV"],u["stars"],u["reviews"],u["rank"],
                  u["level"],u["type"],
-                 u.get("description",""),
+                 details.get("description",u.get("description","")),
                  u["gaokao_score"],u["tuition"],
                  u["employment_rate"],u["avg_salary"],
-                 json.dumps(u.get("metrics",{}),ensure_ascii=False),json.dumps(u.get("tags",[]),ensure_ascii=False),
-                 json.dumps(u.get("province_scores",{}),ensure_ascii=False),
-                 u.get("address",""),u.get("phone",""),u.get("website",""),u.get("founded_year",0),
-                 str(u.get("campus_area","")),str(u.get("student_count","")),str(u.get("faculty_count","")),
-                 u.get("doctoral_programs",0),u.get("master_programs",0),u.get("national_key_programs",0),
-                 u.get("postdoc_stations",0),u.get("academicians",0),
-                 u.get("dormitory",""),u.get("canteen",""),u.get("campus_life",""),
-                 json.dumps(u.get("notable_alumni",[]),ensure_ascii=False),
-                 u.get("motto",""),u.get("school_nature",""),u.get("affiliation","")))
+                 json.dumps(details.get("metrics",u.get("metrics",{})),ensure_ascii=False),
+                 json.dumps(details.get("tags",u.get("tags",[])),ensure_ascii=False),
+                 json.dumps(ps,ensure_ascii=False),
+                 details.get("address",u.get("address","")),details.get("phone",u.get("phone","")),details.get("website",u.get("website","")),details.get("founded_year",u.get("founded_year",0)),
+                 str(details.get("campus_area",u.get("campus_area",""))),str(details.get("student_count",u.get("student_count",""))),str(details.get("faculty_count",u.get("faculty_count",""))),
+                 details.get("doctoral_programs",u.get("doctoral_programs",0)),details.get("master_programs",u.get("master_programs",0)),details.get("national_key_programs",u.get("national_key_programs",0)),
+                 details.get("postdoc_stations",u.get("postdoc_stations",0)),details.get("academicians",u.get("academicians",0)),
+                 details.get("dormitory",u.get("dormitory","")),details.get("canteen",u.get("canteen","")),details.get("campus_life",u.get("campus_life","")),
+                 json.dumps(details.get("notable_alumni",u.get("notable_alumni",[])),ensure_ascii=False),
+                 details.get("motto",u.get("motto","")),details.get("school_nature",u.get("school_nature","")),details.get("affiliation",u.get("affiliation",""))))
 
         for p in PROGRAMS:
             c.execute("INSERT OR REPLACE INTO programs (name,icon,univs) VALUES (?,?,?)",
@@ -449,7 +468,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.10.0","service":"UniPulse"}
+    return {"status":"ok","version":"3.11.0","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
@@ -1152,9 +1171,20 @@ def get_province_scores(uni_id: int):
     base_scores = {}
     if ps_raw:
         try:
-            base_scores = json.loads(ps_raw) if isinstance(ps_raw, str) else {}
+            base_scores = json.loads(ps_raw) if isinstance(ps_raw, str) else (ps_raw if isinstance(ps_raw, dict) else {})
         except Exception:
             base_scores = {}
+
+    # Fallback: load from province_scores.json if DB is empty
+    if not base_scores:
+        ps_path = os.path.join(os.path.dirname(__file__), "province_scores.json")
+        if os.path.exists(ps_path):
+            try:
+                with open(ps_path, "r", encoding="utf-8") as f:
+                    all_ps = json.load(f)
+                base_scores = all_ps.get(str(uni_id), {})
+            except Exception:
+                base_scores = {}
 
     if not base_scores:
         random.seed(uni_id)
