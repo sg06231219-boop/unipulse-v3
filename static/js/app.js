@@ -363,11 +363,33 @@ async function loadProvinceMajorScores(uniId, containerId) {
       return;
     }
 
-    let html = userScore
-      ? '<p style="color:var(--text2);margin-bottom:0.8rem;font-size:0.88rem">💡 以你的 <strong>' + userScore + '分</strong> 为基准，点击省份可展开专业分数线</p>'
-      : '<p style="color:var(--text2);margin-bottom:0.8rem;font-size:0.88rem">💡 在首页输入你的分数，可查看各省份录取概率 | 点击省份展开专业分数线</p>';
+    // ── 筛选栏 ──
+    let html = '<div class="prov-filter-bar" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.8rem">';
+    // 搜索框
+    html += '<input id="provSearch" type="text" placeholder="搜索省份..." style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 10px;color:var(--text1);font-size:0.85rem;width:140px;outline:none" oninput="filterProvRows()">';
+    // 科类筛选
+    html += '<select id="provTypeFilter" onchange="filterProvRows()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 8px;color:var(--text1);font-size:0.85rem;outline:none">';
+    html += '<option value="all">全部科类</option><option value="综合">综合</option><option value="理科">理科</option><option value="文科">文科</option>';
+    html += '</select>';
+    // 排序
+    html += '<select id="provSortBy" onchange="filterProvRows()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 8px;color:var(--text1);font-size:0.85rem;outline:none">';
+    html += '<option value="name">按省份</option><option value="score-asc">分数低→高</option><option value="score-desc">分数高→低</option>';
+    if (userScore) html += '<option value="gap-desc">差距大→小</option>';
+    html += '</select>';
+    // 统计
+    html += '<span id="provCount" style="color:var(--text3);font-size:0.82rem;margin-left:auto">' + provinces.length + '个省份 · ' + Object.values(majorScores).reduce((a, b) => a + b.length, 0) + '条专业分数线</span>';
+    html += '</div>';
 
-    html += '<div style="overflow-x:auto"><table class="emp-table"><thead><tr><th style="width:30px"></th><th>省份</th><th>校线</th>';
+    // ── 用户分数提示 ──
+    if (userScore) {
+      html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">💡 以你的 <strong>' + userScore + '分</strong> 为基准，点击省份展开专业分数线</p>';
+    } else {
+      html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">💡 在首页输入你的分数，可查看各省份录取概率 | 点击省份展开专业分数线</p>';
+    }
+
+    // ── 省份表格 ──
+    html += '<div style="overflow-x:auto"><table class="emp-table" id="provTable"><thead><tr>';
+    html += '<th style="width:28px"></th><th>省份</th><th>校线</th><th>专业数</th>';
     if (userScore) html += '<th>差距</th><th>评估</th>';
     html += '</tr></thead><tbody>';
 
@@ -378,37 +400,53 @@ async function loadProvinceMajorScores(uniId, containerId) {
       const majors = majorScores[prov] || [];
       const hasMajors = majors.length > 0;
       const rowId = 'prov_' + prov.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '');
+      // 统计各科类专业数
+      const keleCounts = {};
+      majors.forEach(m => { keleCounts[m.type] = (keleCounts[m.type] || 0) + 1; });
+      const keleSummary = Object.entries(keleCounts).map(([k, v]) => k + v).join(' ');
 
-      html += '<tr style="cursor:pointer" onclick="toggleProvMajors(\'' + rowId + '\')">';
+      html += '<tr class="prov-row" data-prov="' + esc(prov) + '" data-score="' + base + '" data-gap="' + (gap || 0) + '" data-types="' + Object.keys(keleCounts).join(',') + '" style="cursor:pointer" onclick="toggleProvMajors(\'' + rowId + '\')">';
       html += '<td style="text-align:center">' + (hasMajors ? '▶' : '') + '</td>';
       html += '<td>' + esc(prov) + '</td>';
       html += '<td><strong>' + base + '</strong></td>';
+      html += '<td style="font-size:0.82rem;color:var(--text3)">' + majors.length + ' <span style="font-size:0.75rem">(' + keleSummary + ')</span></td>';
       if (userScore) {
         html += '<td style="color:' + (gap >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (gap >= 0 ? '+' : '') + gap + '</td>';
         html += '<td><span class="uni-card-chance ' + (chance ? chance.cls : '') + '">' + (chance ? chance.text : '-') + '</span></td>';
       }
       html += '</tr>';
 
-      // Major rows (hidden by default)
+      // 专业详情行（默认收起）
       if (hasMajors) {
-        html += '<tr id="' + rowId + '" style="display:none"><td colspan="' + (userScore ? 5 : 3) + '" style="padding:0">';
-        html += '<table class="emp-table" style="margin:0;font-size:0.85rem;background:rgba(255,255,255,0.02)"><thead><tr><th>专业</th><th>科类</th><th>分数线</th>';
+        html += '<tr id="' + rowId + '" class="prov-detail-row" style="display:none"><td colspan="' + (userScore ? 6 : 4) + '" style="padding:0">';
+        html += '<div style="padding:0.6rem 0.8rem;background:rgba(255,255,255,0.02)">';
+        // 科类标签切换
+        const types = Object.keys(keleCounts);
+        if (types.length > 1) {
+          html += '<div style="display:flex;gap:0.4rem;margin-bottom:0.5rem">';
+          html += '<button class="prov-kele-btn active" data-rowid="' + rowId + '" data-type="all" onclick="filterMajors(this,\'' + rowId + '\',\'all\')">全部</button>';
+          types.forEach(t => {
+            html += '<button class="prov-kele-btn" data-rowid="' + rowId + '" data-type="' + t + '" onclick="filterMajors(this,\'' + rowId + '\',\'' + t + '\')">' + t + '(' + keleCounts[t] + ')</button>';
+          });
+          html += '</div>';
+        }
+        html += '<table class="emp-table" style="margin:0;font-size:0.82rem"><thead><tr><th>专业</th><th>科类</th><th>分数线</th>';
         if (userScore) html += '<th>差距</th><th>评估</th>';
         html += '</tr></thead><tbody>';
         for (const m of majors) {
           const mGap = userScore ? userScore - m.score : null;
           const mChance = mGap !== null ? getChanceInfo(mGap) : null;
-          html += '<tr>';
+          html += '<tr class="major-row" data-type="' + m.type + '">';
           html += '<td>' + esc(m.major) + '</td>';
-          html += '<td><span class="tag tag-' + (m.type === '理科' ? 'accent2' : m.type === '文科' ? 'warning' : 'info') + '" style="font-size:0.75rem;padding:1px 6px">' + m.type + '</span></td>';
+          html += '<td><span class="tag tag-' + (m.type === '理科' ? 'accent2' : m.type === '文科' ? 'warning' : 'info') + '" style="font-size:0.72rem;padding:1px 5px">' + m.type + '</span></td>';
           html += '<td>' + m.score + '</td>';
           if (userScore) {
             html += '<td style="color:' + (mGap >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (mGap >= 0 ? '+' : '') + mGap + '</td>';
-            html += '<td><span class="uni-card-chance ' + (mChance ? mChance.cls : '') + '" style="font-size:0.75rem">' + (mChance ? mChance.text : '-') + '</span></td>';
+            html += '<td><span class="uni-card-chance ' + (mChance ? mChance.cls : '') + '" style="font-size:0.72rem">' + (mChance ? mChance.text : '-') + '</span></td>';
           }
           html += '</tr>';
         }
-        html += '</tbody></table></td></tr>';
+        html += '</tbody></table></div></td></tr>';
       }
     }
 
@@ -424,14 +462,70 @@ function toggleProvMajors(rowId) {
   if (!row) return;
   const isHidden = row.style.display === 'none';
   row.style.display = isHidden ? 'table-row' : 'none';
-  // Toggle arrow in previous row
   const prevRow = row.previousElementSibling;
   if (prevRow) {
     const arrow = prevRow.querySelector('td');
     if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
   }
-};
-  function renderUniInfo(u) {
+}
+
+function filterProvRows() {
+  const search = (document.getElementById('provSearch')?.value || '').trim();
+  const typeFilter = document.getElementById('provTypeFilter')?.value || 'all';
+  const sortBy = document.getElementById('provSortBy')?.value || 'name';
+  const rows = document.querySelectorAll('.prov-row');
+  let visible = 0;
+  const rowsData = [];
+  rows.forEach(row => {
+    const prov = row.dataset.prov;
+    const types = (row.dataset.types || '').split(',');
+    const matchSearch = !search || prov.includes(search);
+    const matchType = typeFilter === 'all' || types.includes(typeFilter);
+    const show = matchSearch && matchType;
+    row.style.display = show ? '' : 'none';
+    // Also hide/show detail row
+    const detailRow = row.nextElementSibling;
+    if (detailRow && detailRow.classList.contains('prov-detail-row')) {
+      detailRow.style.display = show ? detailRow.style.display : 'none';
+    }
+    if (show) {
+      visible++;
+      rowsData.push({ el: row, prov: prov, score: parseInt(row.dataset.score), gap: parseInt(row.dataset.gap) });
+    }
+  });
+  // Sort
+  if (sortBy !== 'name') {
+    const tbody = document.querySelector('#provTable tbody');
+    rowsData.sort((a, b) => {
+      if (sortBy === 'score-asc') return a.score - b.score;
+      if (sortBy === 'score-desc') return b.score - a.score;
+      if (sortBy === 'gap-desc') return b.gap - a.gap;
+      return 0;
+    });
+    rowsData.forEach(item => {
+      tbody.appendChild(item.el);
+      const detail = item.el.nextElementSibling;
+      if (detail && detail.classList.contains('prov-detail-row')) {
+        tbody.appendChild(detail);
+      }
+    });
+  }
+  const countEl = document.getElementById('provCount');
+  if (countEl) countEl.textContent = visible + '个省份';
+}
+
+function filterMajors(btn, rowId, type) {
+  const container = document.getElementById(rowId);
+  if (!container) return;
+  // Toggle active button
+  container.querySelectorAll('.prov-kele-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  // Filter rows
+  container.querySelectorAll('.major-row').forEach(row => {
+    row.style.display = (type === 'all' || row.dataset.type === type) ? '' : 'none';
+  });
+}
+function renderUniInfo(u) {
   let html = '<div class="uni-info-grid">';
   const fields = [
     ['motto', '校训', '🎓'],
