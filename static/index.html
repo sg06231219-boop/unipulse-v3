@@ -1,558 +1,228 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>UniPulse — 高考志愿填报神器 | AI选校·分数线·就业数据</title>
-<meta name="description" content="高考志愿填报神器：1882所高校真实数据，分数线/就业薪资/专业对比，AI智能选校报告，冲稳保一键生成">
-<meta property="og:title" content="UniPulse — 高考志愿填报神器">
-<meta property="og:description" content="自己淋过的雨，不想让你再淋。1882所高校真实数据+AI选校，免费帮高考生填志愿">
-<meta property="og:image" content="https://unipulse-v3.onrender.com/static/favicon.svg">
-<meta name="theme-color" content="#0a0e27">
-<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniPulse · 高考志愿智能助手</title>
+  <meta name="description" content="覆盖1457所中国高校，真实省分数线，AI智能选校，志愿表管理">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+  <link rel="stylesheet" href="/static/css/style_v4.css?v=4.0.0">
 </head>
-<!-- 前端增强版本 -->
 <body>
-<div id="app">
   <!-- 顶部导航 -->
   <nav class="topnav">
-    <div class="nav-inner">
-      <a href="#" class="nav-logo" data-page="home">🎓 UniPulse</a>
-      <div class="nav-search">
-        <input type="text" id="searchInput" placeholder="搜高校、专业、分数线..." autocomplete="off">
-        <button id="searchBtn">🔍</button>
+    <div class="container nav-inner">
+      <a href="#" data-page="home" class="nav-brand">🎓 UniPulse</a>
+      <div class="nav-links" id="navLinks">
+        <a href="#" data-page="universities">高校库</a>
+        <a href="#" data-page="programs">专业</a>
+        <a href="#" data-page="forum">讨论区</a>
+        <a href="#" data-page="compare">对比</a>
+        <a href="#" data-page="ai-report">AI选校</a>
       </div>
-      <div class="nav-links">
-        <a href="#" data-page="universities" class="nav-link">高校</a>
-        <a href="#" data-page="programs" class="nav-link">专业</a>
-        <a href="#" data-page="forum" class="nav-link">论坛</a>
-        <a href="#" data-page="compare" class="nav-link">对比</a>
-        <a href="#" data-page="wish-table" class="nav-link nav-wish" id="navWish">📋 志愿表</a>
-        <a href="#" data-page="ai-report" class="nav-link nav-cta">🤖 AI选校</a>
-        <a href="#" data-page="favorites" class="nav-link" id="navFav">⭐</a>
+      <div class="nav-actions">
+        <input type="text" id="globalSearch" class="nav-search" placeholder="搜索高校/专业 (按/聚焦)">
+        <a href="#" data-page="wish-table" class="btn btn-sm btn-ghost" style="position:relative">
+          📋 志愿表 <span id="wishBadge" class="wish-badge" style="display:none">0</span>
+        </a>
+        <a href="#" data-page="favorites" class="btn btn-sm btn-ghost">⭐ 收藏</a>
       </div>
-      <button class="nav-mobile-toggle" id="mobileToggle">☰</button>
+      <button class="btn btn-ghost mobile-toggle" id="mobileToggle">☰</button>
     </div>
   </nav>
 
-  <!-- 移动端菜单 -->
-  <div class="mobile-menu" id="mobileMenu">
-    <a href="#" data-page="home">🏠 首页</a>
-    <a href="#" data-page="universities">🏫 高校库</a>
-    <a href="#" data-page="programs">📚 专业</a>
-    <a href="#" data-page="forum">💬 论坛</a>
-    <a href="#" data-page="compare">⚖️ 院校对比</a>
-    <a href="#" data-page="wish-table">📋 志愿表</a>
-    <a href="#" data-page="ai-report">🤖 AI选校</a>
-    <a href="#" data-page="favorites">⭐ 收藏</a>
-  </div>
-
-  <!-- ===== 首页 ===== -->
-  <section class="page" id="page-home">
-    <div class="hero">
-      <canvas id="heroCanvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0"></canvas>
-      <div class="hero-bg"></div>
-      <div class="hero-content">
-        <div class="hero-badge">🎓 自己淋过的雨 不想让你再淋</div>
-        <h1>高考志愿 <span class="gradient-text">不再迷茫</span></h1>
-        <p class="hero-sub">1882所高校真实数据 · 分数线 / 就业薪资 / 录取概率 · AI冲稳保选校方案</p>
-        <!-- 快速分数输入 -->
-        <div class="hero-score-input">
-          <div class="score-input-group">
-            <input type="number" id="heroScore" class="score-input" placeholder="输入你的高考分数" min="300" max="750">
-            <button class="btn btn-primary btn-lg" id="heroScoreBtn">一键选校 →</button>
-          </div>
-          <div class="score-quick-btns">
-            <button class="quick-score" data-score="500">500分</button>
-            <button class="quick-score" data-score="550">550分</button>
-            <button class="quick-score" data-score="580">580分</button>
-            <button class="quick-score" data-score="600">600分</button>
-            <button class="quick-score" data-score="620">620分</button>
-            <button class="quick-score" data-score="650">650分</button>
-            <button class="quick-score" data-score="680">680分</button>
-          </div>
-        </div>
-        <div class="hero-stats" id="heroStats">
-          <div class="stat-pill">📊 加载中...</div>
-        </div>
-        <div class="hero-quick-links">
-          <a href="#" class="hero-qlink" data-page="universities">🏫 高校库</a>
-          <a href="#" class="hero-qlink" data-page="wish-table">📋 志愿表</a>
-          <a href="#" class="hero-qlink" data-page="compare">⚖️ 院校对比</a>
-          <a href="#" class="hero-qlink" data-page="forum">💬 论坛</a>
-        </div>
-      </div>
-    </div>
-
-    <!-- 分数段分布图 -->
-    <div class="section">
-      <h2 class="section-title">📊 分数段院校分布</h2>
-      <p class="section-desc">看看你的分数段有多少学校可选</p>
-      <div class="score-dist-chart" id="scoreDistChart"></div>
-    </div>
-
-    <div class="section">
-      <h2 class="section-title">🔥 热门高校</h2>
-      <div class="uni-grid" id="hotUnis"></div>
-    </div>
-
-    <div class="section">
-      <h2 class="section-title">📚 专业分类</h2>
-      <div class="program-grid" id="programGrid"></div>
-    </div>
-
-    <div class="section">
-      <h2 class="section-title">💬 最新讨论</h2>
-      <div class="forum-preview" id="forumPreview"></div>
-      <div class="text-center" style="margin-top:1rem">
-        <button class="btn btn-ghost" data-page="forum">查看全部 →</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===== 高校列表 ===== -->
-  <section class="page hidden" id="page-universities">
-    <div class="section">
-      <div class="page-header">
-        <h1>🏫 高校库</h1>
-        <p>1882所中国高校，按分数线、就业率、薪资全面对比</p>
-      </div>
-      <!-- 分数筛选条 -->
-      <div class="score-filter-bar">
-        <span class="filter-label">你的分数</span>
-        <input type="range" id="scoreSlider" min="300" max="750" value="600" step="5" class="score-slider">
-        <span class="score-display" id="scoreDisplay">600分</span>
-        <button class="btn btn-sm btn-primary" id="scoreFilterBtn">按分选校</button>
-      </div>
-      <div class="filters-bar">
-        <input type="text" class="filter-input" id="uniSearch" placeholder="搜索高校名称/所在地...">
-        <select id="filterRegion" class="filter-select">
-          <option value="">全部地区</option>
-          <option value="华北">华北</option>
-          <option value="华东">华东</option>
-          <option value="华中">华中</option>
-          <option value="华南">华南</option>
-          <option value="西南">西南</option>
-          <option value="西北">西北</option>
-          <option value="东北">东北</option>
-        </select>
-        <select id="filterLevel" class="filter-select">
-          <option value="">全部层次</option>
-          <option value="985">985</option>
-          <option value="211">211</option>
-          <option value="双一流">双一流</option>
-        </select>
-        <select id="filterType" class="filter-select">
-          <option value="">全部类型</option>
-          <option value="综合">综合</option>
-          <option value="理工">理工</option>
-          <option value="师范">师范</option>
-          <option value="农林">农林</option>
-          <option value="医药">医药</option>
-          <option value="财经">财经</option>
-          <option value="政法">政法</option>
-          <option value="语言">语言</option>
-          <option value="艺术">艺术</option>
-        </select>
-        <select id="sortUni" class="filter-select">
-          <option value="rank-asc">排名↑</option>
-          <option value="score-desc">分数线↓</option>
-          <option value="salary-desc">薪资↓</option>
-          <option value="employment-desc">就业率↓</option>
-          <option value="stars-desc">评分↓</option>
-        </select>
-        <select id="filterChance" class="filter-select" style="min-width:90px">
-          <option value="">全部概率</option>
-          <option value="冲">🎯 冲一冲</option>
-          <option value="稳">✅ 稳一稳</option>
-          <option value="保">🛡️ 保一保</option>
-        </select>
-        <button class="btn btn-sm btn-ghost" id="clearFilters">重置</button>
-      </div>
-      <div class="results-info" id="uniResultsInfo"></div>
-      <div class="uni-grid" id="uniGrid"></div>
-      <div class="pagination" id="uniPagination"></div>
-    </div>
-  </section>
-
-  <!-- ===== 高校详情 ===== -->
-  <section class="page hidden" id="page-uni-detail">
-    <div class="section" id="uniDetailContent">
-      <div class="loading-spinner"><div class="spinner"></div><p>加载中...</p></div>
-    </div>
-  </section>
-
-  <!-- ===== 专业列表 ===== -->
-  <section class="page hidden" id="page-programs">
-    <div class="section">
-      <div class="page-header">
-        <h1>📚 专业分类</h1>
-        <p>22个专业大类，看各类专业在哪些高校最强</p>
-      </div>
-      <div class="program-grid" id="programGridFull"></div>
-    </div>
-  </section>
-
-  <!-- ===== 专业详情 ===== -->
-  <section class="page hidden" id="page-program-detail">
-    <div class="section" id="programDetailContent">
-      <div class="loading-spinner"><div class="spinner"></div><p>加载中...</p></div>
-    </div>
-  </section>
-
-  <!-- ===== 院校对比 ===== -->
-  <section class="page hidden" id="page-compare">
-    <div class="section" style="max-width:1100px;margin:2rem auto">
-      <div class="page-header">
-        <h1>⚖️ 院校对比</h1>
-        <p>最多同时对比5所高校的核心指标</p>
-      </div>
-      <!-- 搜索下拉选择器 -->
-      <div class="compare-search-wrapper" style="max-width:400px;margin:0 auto 1rem;position:relative">
-        <input type="text" id="compareSearchInput" class="form-input" placeholder="🔍 输入高校名称搜索添加..." autocomplete="off">
-        <div id="compareSearchDropdown" class="compare-search-dropdown hidden"></div>
-      </div>
-      <div class="compare-picker">
-        <div class="compare-slots" id="compareSlots"></div>
-        <button class="btn btn-primary btn-lg" id="compareGoBtn" disabled>开始对比</button>
-      </div>
-      <!-- 雷达图容器 -->
-      <div id="compareRadar" class="hidden" style="text-align:center;margin-top:1.5rem">
-        <h3 style="margin-bottom:0.8rem">📊 六维对比雷达图</h3>
-        <canvas id="radarCanvas"></canvas>
-      </div>
-      <div id="compareResult" class="hidden"></div>
-    </div>
-  </section>
-
-  <!-- ===== 论坛 ===== -->
-  <section class="page hidden" id="page-forum">
-    <div class="section">
-      <div class="page-header">
-        <h1>💬 选校论坛</h1>
-        <p>考生和家长交流高考志愿、专业选择、就业前景</p>
-      </div>
-      <div class="forum-layout">
-        <div class="forum-main">
-          <div class="forum-search-bar">
-            <input type="text" id="forumSearch" class="form-input" placeholder="🔍 搜索帖子标题或内容..." autocomplete="off">
-          </div>
-          <div class="forum-toolbar">
-            <div class="forum-category-tabs">
-              <button class="forum-cat-tab active" data-category="">📋 全部</button>
-              <button class="forum-cat-tab" data-category="选校咨询">🎓 志愿</button>
-              <button class="forum-cat-tab" data-category="校园生活">🏫 校园</button>
-              <button class="forum-cat-tab" data-category="专业讨论">📰 政策</button>
-              <button class="forum-cat-tab" data-category="备考经验">💡 技巧</button>
-              <button class="forum-cat-tab" data-category="录取经验">🔍 情报</button>
+  <main class="main-content">
+    <!-- ═══ 首页 ═══ -->
+    <div id="page-home" class="page">
+      <!-- Hero -->
+      <div class="hero">
+        <div class="container">
+          <div class="hero-search-wrap">
+            <h1 class="hero-title">输入分数，智能选校</h1>
+            <p class="hero-sub">覆盖 1457 所高校 · 真实省分数线 · AI志愿推荐</p>
+            <div class="hero-search">
+              <input type="number" id="heroSearch" class="hero-input" placeholder="输入你的高考分数" min="300" max="750">
+              <button id="heroSearchBtn" class="btn btn-primary hero-btn">搜索</button>
             </div>
-            <div class="forum-toolbar-right">
-              <select id="forumSort" class="filter-select">
-                <option value="recent">最新</option>
-                <option value="hot">最热</option>
-                <option value="liked">最多赞</option>
-              </select>
-              <button class="btn btn-primary btn-sm" id="newPostBtn">✏️ 发帖</button>
+            <div class="quick-tags">
+              <button class="quick-tag" data-score="650">650+</button>
+              <button class="quick-tag" data-score="600">600+</button>
+              <button class="quick-tag" data-score="550">550+</button>
+              <button class="quick-tag" data-score="500">500+</button>
+              <button class="quick-tag" data-score="450">450+</button>
             </div>
+            <div id="heroStats" class="hero-stats"></div>
           </div>
-          <div id="forumPosts"></div>
-          <div class="pagination" id="forumPagination"></div>
         </div>
-        <div class="forum-sidebar">
-          <h3>热门标签</h3>
-          <div class="tag-cloud" id="tagCloud"></div>
-          <h3 style="margin-top:1.5rem">发帖指南</h3>
-          <ul class="tips-list">
-            <li>提问前先搜索是否有类似问题</li>
-            <li>说明你的分数、省份、选科</li>
-            <li>专业问题请说明具体方向</li>
-            <li>文明交流，互帮互助</li>
-          </ul>
+      </div>
+
+      <!-- 热门高校 -->
+      <section class="container section">
+        <div class="section-header">
+          <h2 class="section-title">🔥 热门高校</h2>
+          <a href="#" data-page="universities" class="section-more">查看全部 →</a>
         </div>
+        <div id="hotUnis" class="uni-grid"></div>
+      </section>
+
+      <!-- 分数段分布 -->
+      <section class="container section">
+        <div class="section-header">
+          <h2 class="section-title">📊 分数段分布</h2>
+        </div>
+        <div id="scoreDistChart"></div>
+      </section>
+
+      <!-- 热门专业 -->
+      <section class="container section">
+        <div class="section-header">
+          <h2 class="section-title">📚 热门专业</h2>
+          <a href="#" data-page="programs" class="section-more">查看全部 →</a>
+        </div>
+        <div id="programGrid" class="program-grid"></div>
+      </section>
+
+      <!-- 讨论区预览 -->
+      <section class="container section">
+        <div class="section-header">
+          <h2 class="section-title">💬 讨论区</h2>
+          <a href="#" data-page="forum" class="section-more">更多 →</a>
+        </div>
+        <div id="forumPreview"></div>
+      </section>
+    </div>
+
+    <!-- ═══ 高校库 ═══ -->
+    <div id="page-universities" class="page hidden">
+      <div class="container">
+        <div class="page-header">
+          <h1>高校库 <span id="uniCount" class="text-gray">共 0 所</span></h1>
+        </div>
+        <!-- 分数滑块 -->
+        <div class="filter-bar" style="margin-bottom:16px">
+          <label>你的分数：<span id="scoreDisplay">550</span></label>
+          <input type="range" id="scoreSlider" min="300" max="750" value="550" style="width:200px">
+          <button id="scoreFilterBtn" class="btn btn-sm btn-primary">应用</button>
+        </div>
+        <!-- 筛选栏 -->
+        <div class="filter-bar">
+          <input type="text" id="uniSearch" class="filter-input" placeholder="搜索高校名/省份">
+          <select id="filterRegion" class="filter-select"><option value="">全部地区</option><option>华北</option><option>华东</option><option>华中</option><option>华南</option><option>西南</option><option>西北</option><option>东北</option></select>
+          <select id="filterLevel" class="filter-select"><option value="">全部层次</option><option value="985">985</option><option value="211">211</option><option value="双一流">双一流</option></select>
+          <select id="filterType" class="filter-select"><option value="">全部类型</option><option>综合</option><option>理工</option><option>师范</option><option>医药</option><option>财经</option><option>政法</option><option>语言</option><option>农林</option><option>艺术</option><option>军事</option></select>
+          <select id="filterChance" class="filter-select"><option value="">冲稳保</option><option value="冲">冲一冲</option><option value="稳">稳一稳</option><option value="保">保一保</option></select>
+          <select id="sortUni" class="filter-select"><option value="rank-asc">排名↑</option><option value="score-desc">分数线↓</option><option value="salary-desc">薪资↓</option><option value="employment-desc">就业率↓</option></select>
+          <button id="clearFilters" class="btn btn-sm btn-ghost">清除</button>
+        </div>
+        <div id="uniResultsInfo" style="margin:8px 0;font-size:14px;color:var(--gray-400)"></div>
+        <div id="uniGrid" class="uni-grid"></div>
       </div>
     </div>
-  </section>
 
-  <!-- ===== 帖子详情 ===== -->
-  <section class="page hidden" id="page-post-detail">
-    <div class="section" id="postDetailContent">
-      <div class="loading-spinner"><div class="spinner"></div><p>加载中...</p></div>
-    </div>
-  </section>
-
-  <!-- ===== 新帖 ===== -->
-  <section class="page hidden" id="page-new-post">
-    <div class="section" style="max-width:700px;margin:2rem auto">
-      <h1>✏️ 发布新帖</h1>
-      <form id="newPostForm" class="form-card">
-        <div class="form-group">
-          <label>标题</label>
-          <input type="text" id="postTitle" class="form-input" placeholder="简明扼要的标题" required maxlength="100">
-          <div class="char-count"><span id="titleCharCount">0</span>/100</div>
-        </div>
-        <div class="form-group">
-          <label>分类</label>
-          <select id="postCategory" class="form-input">
-            <option value="选校咨询">🎓 选校咨询</option>
-            <option value="专业讨论">📰 专业讨论</option>
-            <option value="录取经验">🔍 录取经验</option>
-            <option value="校园生活">🏫 校园生活</option>
-            <option value="备考经验">💡 备考经验</option>
-            <option value="专业对比">📊 专业对比</option>
-            <option value="就业前景">💼 就业前景</option>
-            <option value="考研交流">📖 考研交流</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>内容</label>
-          <div class="post-editor-bar">
-            <button type="button" class="editor-tab active" data-tab="write" id="tabWrite">编写</button>
-            <button type="button" class="editor-tab" data-tab="preview" id="tabPreview">预览</button>
-          </div>
-          <div id="editorWrite">
-            <textarea id="postContent" class="form-input form-textarea" placeholder="详细描述你的问题或分享..." required></textarea>
-          </div>
-          <div id="editorPreview" class="post-preview hidden"></div>
-          <div class="char-count"><span id="contentCharCount">0</span>/5000</div>
-        </div>
-        <div class="form-group">
-          <label>标签（点击选择或逗号分隔）</label>
-          <div class="tag-select-cloud" id="tagSelectCloud"></div>
-          <input type="text" id="postTags" class="form-input" placeholder="自定义标签，逗号分隔" style="margin-top:0.5rem">
-        </div>
-        <div class="form-group">
-          <label>昵称</label>
-          <input type="text" id="postAuthor" class="form-input" placeholder="匿名用户" value="匿名用户">
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">发布</button>
-          <button type="button" class="btn btn-ghost" data-page="forum">取消</button>
-        </div>
-      </form>
-    </div>
-  </section>
-
-  <!-- ===== AI选校报告 ===== -->
-  <section class="page hidden" id="page-ai-report">
-    <div class="section" style="max-width:800px;margin:2rem auto">
-      <div class="page-header">
-        <h1>🤖 AI 智能选校</h1>
-        <p>输入高考分数，AI为你生成冲·稳·保选校方案</p>
-      </div>
-      <form id="aiReportForm" class="form-card">
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label>高考分数（总分750）</label>
-            <input type="number" id="aiScore" class="form-input" placeholder="例：650" min="300" max="750" required>
-          </div>
-          <div class="form-group flex-1">
-            <label>所在省份</label>
-            <select id="aiProvince" class="form-input">
-              <option value="全国">全国</option>
-              <option value="北京">北京</option><option value="天津">天津</option><option value="上海">上海</option><option value="重庆">重庆</option>
-              <option value="河北">河北</option><option value="山西">山西</option><option value="辽宁">辽宁</option><option value="吉林">吉林</option><option value="黑龙江">黑龙江</option>
-              <option value="江苏">江苏</option><option value="浙江">浙江</option><option value="安徽">安徽</option><option value="福建">福建</option><option value="江西">江西</option><option value="山东">山东</option>
-              <option value="河南">河南</option><option value="湖北">湖北</option><option value="湖南">湖南</option><option value="广东">广东</option><option value="广西">广西</option><option value="海南">海南</option>
-              <option value="四川">四川</option><option value="贵州">贵州</option><option value="云南">云南</option><option value="西藏">西藏</option>
-              <option value="陕西">陕西</option><option value="甘肃">甘肃</option><option value="青海">青海</option><option value="宁夏">宁夏</option><option value="新疆">新疆</option>
-              <option value="内蒙古">内蒙古</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>兴趣专业方向（可选，逗号分隔）</label>
-          <input type="text" id="aiInterests" class="form-input" placeholder="例：计算机,电子信息,自动化">
-        </div>
-        <div class="form-group">
-          <label>选科组合</label>
-          <select id="aiSubjects" class="form-input">
-            <option value="">不选择</option>
-            <option value="物化生">物化生</option>
-            <option value="物化政">物化政</option>
-            <option value="物化地">物化地</option>
-            <option value="物生政">物生政</option>
-            <option value="物生地">物生地</option>
-            <option value="物政地">物政地</option>
-            <option value="史政地">史政地</option>
-            <option value="史政生">史政生</option>
-            <option value="史化生">史化生</option>
-            <option value="史化地">史化地</option>
-            <option value="史生地">史生地</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>偏好</label>
-          <select id="aiPreference" class="form-input">
-            <option value="综合">综合平衡</option>
-            <option value="就业">优先就业</option>
-            <option value="深造">优先深造</option>
-            <option value="城市">优先城市</option>
-          </select>
-        </div>
-        <button type="submit" class="btn btn-primary btn-lg" style="width:100%">生成选校报告 🚀</button>
-      </form>
-      <div id="aiReportResult" class="hidden" style="margin-top:2rem"></div>
-    </div>
-  </section>
-
-  <!-- ===== 志愿表 ===== -->
-  <section class="page hidden" id="page-wish-table">
-    <div class="section" style="max-width:1000px;margin:2rem auto">
-      <div class="page-header">
-        <h1>📋 我的志愿表</h1>
-        <p>像夸克高考一样管理你的冲稳保志愿，最多30个志愿</p>
-      </div>
-      <!-- 操作栏 -->
-      <div class="wish-toolbar">
-        <div class="wish-mode-switch">
-          <button class="wish-mode-btn active" data-mode="group" onclick="switchWishMode('group')">分组视图</button>
-          <button class="wish-mode-btn" data-mode="list" onclick="switchWishMode('list')">列表视图</button>
-        </div>
-        <div class="wish-actions">
-          <button class="btn btn-sm btn-ghost" onclick="exportWishTable('csv')">📥 导出CSV</button>
-          <button class="btn btn-sm btn-ghost" onclick="exportWishTable('json')">📥 导出JSON</button>
-          <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="clearWishTable()">🗑️ 清空</button>
-        </div>
-      </div>
-      <!-- 统计 -->
-      <div class="wish-stats" id="wishStats">
-        <div class="wish-stat-chong">🎯 冲 <strong id="wishChongCount">0</strong></div>
-        <div class="wish-stat-wen">✅ 稳 <strong id="wishWenCount">0</strong></div>
-        <div class="wish-stat-bao">🛡️ 保 <strong id="wishBaoCount">0</strong></div>
-        <div class="wish-stat-total">合计 <strong id="wishTotalCount">0</strong>/30</div>
-      </div>
-      <!-- 分组视图 -->
-      <div id="wishGroupView">
-        <div class="wish-group" id="wishGroupChong">
-          <div class="wish-group-header wish-chong-header">
-            <h3>🎯 冲一冲 <span class="wish-group-desc">分数略高于你的院校</span></h3>
-          </div>
-          <div class="wish-group-items" id="wishItemsChong"></div>
-        </div>
-        <div class="wish-group" id="wishGroupWen">
-          <div class="wish-group-header wish-wen-header">
-            <h3>✅ 稳一稳 <span class="wish-group-desc">分数与你相当</span></h3>
-          </div>
-          <div class="wish-group-items" id="wishItemsWen"></div>
-        </div>
-        <div class="wish-group" id="wishGroupBao">
-          <div class="wish-group-header wish-bao-header">
-            <h3>🛡️ 保一保 <span class="wish-group-desc">分数低于你的院校</span></h3>
-          </div>
-          <div class="wish-group-items" id="wishItemsBao"></div>
-        </div>
-      </div>
-      <!-- 列表视图 -->
-      <div id="wishListView" class="hidden">
-        <div class="wish-list-table" id="wishListTable"></div>
-      </div>
-      <!-- 空状态 -->
-      <div class="empty-state hidden" id="wishEmpty">
-        <div class="empty-icon">📋</div>
-        <h3>志愿表还是空的</h3>
-        <p>输入高考分数后，在高校列表或AI选校中添加志愿</p>
-        <div style="margin-top:1rem;display:flex;gap:0.8rem;justify-content:center">
-          <button class="btn btn-primary" onclick="navigate('universities')">浏览高校</button>
-          <button class="btn btn-ghost" onclick="navigate('ai-report')">AI选校</button>
-        </div>
-      </div>
-      <!-- 提示 -->
-      <div class="wish-tips" id="wishTips">
-        <h4>💡 填报建议</h4>
-        <ul>
-          <li>冲稳保比例建议 <strong>3:5:2</strong> 或 <strong>4:4:2</strong></li>
-          <li>每个志愿注意专业组选科要求是否匹配</li>
-          <li>冲的志愿放在前面，保的志愿不能少</li>
-          <li>建议至少3个保底志愿，避免滑档</li>
-          <li>关注院校招生计划数变化</li>
-        </ul>
+    <!-- ═══ 高校详情 ═══ -->
+    <div id="page-uni-detail" class="page hidden">
+      <div class="container" id="uniDetailContent">
+        <div class="loading-skeleton"></div>
       </div>
     </div>
-  </section>
 
-  <!-- ===== 收藏 ===== -->
-  <section class="page hidden" id="page-favorites">
-    <div class="section">
-      <div class="page-header">
-        <h1>⭐ 我的收藏</h1>
-        <p>收藏的高校会显示在这里，可一键对比</p>
-      </div>
-      <div class="uni-grid" id="favGrid">
-        <div class="empty-state" id="favEmpty">
-          <div class="empty-icon">⭐</div>
-          <h3>暂无收藏</h3>
-          <p>浏览高校时点击⭐收藏</p>
-          <button class="btn btn-primary" data-page="universities">去浏览</button>
-        </div>
+    <!-- ═══ 专业 ═══ -->
+    <div id="page-programs" class="page hidden">
+      <div class="container">
+        <div class="page-header"><h1>专业大全</h1></div>
+        <div id="programGridFull" class="program-grid"></div>
       </div>
     </div>
-  </section>
 
-  <!-- ===== 搜索结果 ===== -->
-  <section class="page hidden" id="page-search">
-    <div class="section">
-      <div class="page-header">
-        <h1>🔍 搜索结果</h1>
-        <p id="searchQueryDisplay"></p>
-      </div>
-      <div id="searchResults"></div>
+    <!-- ═══ 专业详情 ═══ -->
+    <div id="page-program-detail" class="page hidden">
+      <div class="container" id="programDetailContent"></div>
     </div>
-  </section>
 
-  <!-- Toast -->
-  <!-- 专业优先浏览 -->
-  <div id="page-major-browse" class="page hidden">
-    <div class="container" style="padding:2rem 1rem">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
-        <h1 style="font-size:1.5rem;font-weight:800">📚 按专业选院校</h1>
-        <div class="mode-switch-group">
-          <button class="mode-switch-btn" data-mode="university" onclick="switchBrowseMode('university')">🎯 院校优先</button>
-          <button class="mode-switch-btn active" data-mode="major" onclick="switchBrowseMode('major')">📚 专业优先</button>
+    <!-- ═══ 讨论区 ═══ -->
+    <div id="page-forum" class="page hidden">
+      <div class="container">
+        <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+          <h1>讨论区</h1>
+          <button id="newPostBtn" class="btn btn-primary">✏️ 发帖</button>
         </div>
+        <div id="forumList"></div>
       </div>
-      <div id="majorBrowseGrid" class="uni-grid"></div>
+    </div>
+
+    <!-- ═══ 帖子详情 ═══ -->
+    <div id="page-post-detail" class="page hidden">
+      <div class="container" id="postDetailContent"></div>
+    </div>
+
+    <!-- ═══ 对比 ═══ -->
+    <div id="page-compare" class="page hidden">
+      <div class="container">
+        <div class="page-header"><h1>院校对比</h1></div>
+        <div id="compareContent"></div>
+      </div>
+    </div>
+
+    <!-- ═══ 志愿表 ═══ -->
+    <div id="page-wish-table" class="page hidden">
+      <div class="container" id="wishTableContent"></div>
+    </div>
+
+    <!-- ═══ AI选校 ═══ -->
+    <div id="page-ai-report" class="page hidden">
+      <div class="container">
+        <div class="page-header"><h1>🤖 AI 智能选校</h1></div>
+        <div class="ai-form">
+          <div class="form-row">
+            <label class="form-label">高考分数</label>
+            <input type="number" id="aiScore" class="form-input" placeholder="300-750" min="300" max="750">
+          </div>
+          <div class="form-row">
+            <label class="form-label">省份</label>
+            <select id="aiProvince" class="form-select"><option value="">选择省份</option></select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">科类</label>
+            <select id="aiType" class="form-select"><option value="理科">理科</option><option value="文科">文科</option><option value="综合">综合改革</option></select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">意向专业</label>
+            <input type="text" id="aiMajor" class="form-input" placeholder="如：计算机科学与技术">
+          </div>
+          <button id="aiGenerate" class="btn btn-primary" style="width:100%;margin-top:16px">生成选校报告</button>
+        </div>
+        <div id="aiReportContent" style="margin-top:20px"></div>
+      </div>
+    </div>
+
+    <!-- ═══ 收藏 ═══ -->
+    <div id="page-favorites" class="page hidden">
+      <div class="container" id="favoritesContent"></div>
+    </div>
+  </main>
+
+  <!-- 发帖弹窗 -->
+  <div id="newPostModal" class="modal hidden">
+    <div class="modal-overlay" data-close-modal></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>发帖</h3>
+        <button data-close-modal class="btn btn-ghost btn-sm">✕</button>
+      </div>
+      <div class="form-row"><input type="text" id="postTitle" class="form-input" placeholder="标题"></div>
+      <div class="form-row"><textarea id="postContent" class="form-input" rows="5" placeholder="内容"></textarea></div>
+      <div class="form-row"><input type="text" id="postTags" class="form-input" placeholder="标签（逗号分隔）"></div>
+      <button id="submitPost" class="btn btn-primary" style="width:100%">发布</button>
     </div>
   </div>
-
-  <div class="toast-container" id="toastContainer"></div>
-
-  <!-- 移动端底部导航 -->
-  <nav class="mobile-bottom-nav" id="mobileBottomNav">
-    <a href="#" class="mob-nav-item active" data-page="home">🏠</a>
-    <a href="#" class="mob-nav-item" data-page="universities">🏫</a>
-    <a href="#" class="mob-nav-item" data-page="ai-report">🤖</a>
-    <a href="#" class="mob-nav-item" data-page="wish-table">📋</a>
-    <a href="#" class="mob-nav-item" data-page="forum">💬</a>
-  </nav>
 
   <!-- 页脚 -->
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <div class="footer-brand">
-        <h3>🎓 UniPulse</h3>
-        <p>自己淋过的雨，不想让你再淋。免费帮高考生选校填志愿。</p>
-      </div>
-      <div class="footer-links">
-        <h4>功能</h4>
-        <a href="#" data-page="universities">高校数据</a>
-        <a href="#" data-page="programs">专业分类</a>
-        <a href="#" data-page="ai-report">AI选校</a>
-        <a href="#" data-page="compare">院校对比</a>
-        <a href="#" data-page="wish-table">志愿表</a>
-        <a href="#" data-page="forum">交流论坛</a>
-      </div>
-      <div class="footer-links">
-        <h4>数据说明</h4>
-        <p style="font-size:0.85rem;color:var(--text2)">涵盖1882所高校（含985/211/双一流/省属/民办），数据来源：软科排名、各校就业质量报告、教育部公开数据。薪资为毕业生平均起薪，仅供参考。</p>
-      </div>
-    </div>
-    <div class="footer-bottom">
-      <p>UniPulse &copy; 2026 | 仅供参考，请以各校官方数据为准</p>
+  <footer class="footer">
+    <div class="container">
+      <p>UniPulse v4.0 · 高考志愿智能助手 · 数据来源：gaokao.cn</p>
     </div>
   </footer>
-</div>
-<script src="/static/js/app.js"></script>
-<script src="/static/js/app_new_detail.js"></script>
+
+  <script src="/static/js/app_v4.js?v=4.0.0"></script>
 </body>
 </html>
