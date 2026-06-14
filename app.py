@@ -1160,7 +1160,7 @@ def employment_statistics():
 
 @app.get("/api/universities/{uni_id}/province-scores")
 def get_province_scores(uni_id: int):
-    """获取某高校各省分数线（含分专业分数线，22个专业类，31省差异化）"""
+    """获取某高校各省分数线（含分专业分数线，优先返回真实数据）"""
     conn = get_db()
     row = conn.execute("SELECT * FROM universities WHERE id=?", (uni_id,)).fetchone()
     if not row:
@@ -1171,25 +1171,110 @@ def get_province_scores(uni_id: int):
     uni_name = d.get("name", "")
     gaokao_score = d.get("gaokao_score", 500) or 500
     level = d.get("level", "二本") or "二本"
-    uni_loc = d.get("cn", "") or ""  # 高校所在省
+    uni_loc = d.get("cn", "") or ""
     ps_raw = d.get("province_scores")
-    base_scores = {}
+
+    # Parse province_scores from DB
+    province_scores = {}
     if ps_raw:
         try:
-            base_scores = json.loads(ps_raw) if isinstance(ps_raw, str) else (ps_raw if isinstance(ps_raw, dict) else {})
+            province_scores = json.loads(ps_raw) if isinstance(ps_raw, str) else (ps_raw if isinstance(ps_raw, dict) else {})
         except Exception:
-            base_scores = {}
+            province_scores = {}
 
-    # Fallback: load from province_scores.json if DB is empty
-    if not base_scores:
+    # Check if we have REAL data (format: province → array of score objects)
+    # Real data format: {"北京": [{"province":"北京","type":"综合","batch":"本科批","min_score":606,...}], ...}
+    # Old format: {"北京": 585, "天津": 560, ...}
+    has_real_data = False
+    if province_scores:
+        first_val = next(iter(province_scores.values()), None)
+        if isinstance(first_val, list):
+            has_real_data = True
+
+    # If we have real data, return it directly in the format the frontend expects
+    if has_real_data:
+        base_scores = {}
+        major_scores = {}
+        for prov, entries in province_scores.items():
+            if not isinstance(entries, list) or not entries:
+                continue
+            # Extract base score (lowest batch score for the province)
+            min_score = min((e.get("min_score", 9999) for e in entries if e.get("min_score")), default=0)
+            base_scores[prov] = min_score
+            # Build major_scores from real data entries
+            majors_list = []
+            for e in entries:
+                majors_list.append({
+                    "major": e.get("sp_name", e.get("subject_group", "")),
+                    "score": e.get("min_score", 0),
+                    "type": e.get("type", "综合"),
+                    "batch": e.get("batch", ""),
+                    "min_rank": e.get("min_rank"),
+                    "subject_req": e.get("subject_req", ""),
+                    "year": e.get("year", 2024),
+                })
+            majors_list.sort(key=lambda x: x["score"], reverse=True)
+            major_scores[prov] = majors_list
+        return {"uni_id": uni_id, "uni_name": uni_name, "base_scores": base_scores, "major_scores": major_scores}
+
+    # Fallback: load from province_scores.json.gz or .json
+    if not province_scores:
+        ps_gz_path = os.path.join(os.path.dirname(__file__), "province_scores.json.gz")
         ps_path = os.path.join(os.path.dirname(__file__), "province_scores.json")
-        if os.path.exists(ps_path):
+        if os.path.exists(ps_gz_path):
+            try:
+                import gzip
+                with gzip.open(ps_gz_path, "rt", encoding="utf-8") as f:
+                    all_ps = json.load(f)
+                first_ps = next(iter(all_ps.values()), None) if all_ps else None
+                if isinstance(first_ps, list):
+                    # Real data in file too
+                    raw = all_ps.get(str(uni_id), {})
+                    if raw:
+                        province_scores = raw
+                    first_val = next(iter(province_scores.values()), None) if isinstance(province_scores, dict) else None
+                    if isinstance(first_val, list):
+                        base_scores = {}
+                        major_scores = {}
+                        for prov, entries in province_scores.items():
+                            if not isinstance(entries, list) or not entries:
+                                continue
+                            min_score = min((e.get("min_score", 9999) for e in entries if e.get("min_score")), default=0)
+                            base_scores[prov] = min_score
+                            majors_list = []
+                            for e in entries:
+                                majors_list.append({
+                                    "major": e.get("sp_name", e.get("subject_group", "")),
+                                    "score": e.get("min_score", 0),
+                                    "type": e.get("type", "综合"),
+                                    "batch": e.get("batch", ""),
+                                    "min_rank": e.get("min_rank"),
+                                    "subject_req": e.get("subject_req", ""),
+                                    "year": e.get("year", 2024),
+                                })
+                            majors_list.sort(key=lambda x: x["score"], reverse=True)
+                            major_scores[prov] = majors_list
+                        return {"uni_id": uni_id, "uni_name": uni_name, "base_scores": base_scores, "major_scores": major_scores}
+                    elif isinstance(first_val, (int, float)):
+                        base_scores = province_scores
+                else:
+                    base_scores = all_ps.get(str(uni_id), {})
+                    if not isinstance(base_scores, dict):
+                        base_scores = {}
+            except Exception:
+                base_scores = {}
+        elif os.path.exists(ps_path):
             try:
                 with open(ps_path, "r", encoding="utf-8") as f:
                     all_ps = json.load(f)
                 base_scores = all_ps.get(str(uni_id), {})
+                if not isinstance(base_scores, dict):
+                    base_scores = {}
             except Exception:
                 base_scores = {}
+    else:
+        # province_scores is old format (province → number)
+        base_scores = province_scores
 
     if not base_scores:
         random.seed(uni_id)
@@ -1198,10 +1283,17 @@ def get_province_scores(uni_id: int):
         for p in provinces:
             base_scores[p] = max(200, gaokao_score + offsets.get(p, 0) + random.randint(-8, 8))
 
-    # ── 22个专业类 + 分数偏移区间（相对校线）──
-    # 格式: (专业名, 最低偏移, 最高偏移, 文科是否招生)
+    # Ensure base_scores values are numbers (for random generation fallback)
+    numeric_scores = {}
+    for k, v in base_scores.items():
+        if isinstance(v, (int, float)):
+            numeric_scores[k] = v
+        elif isinstance(v, list) and v:
+            numeric_scores[k] = min((e.get("min_score", 9999) for e in v if isinstance(e, dict) and e.get("min_score")), default=gaokao_score)
+    base_scores = numeric_scores
+
+    # ── 27个专业类 + 分数偏移区间（相对校线）──
     all_majors = [
-        # 理工热门
         ("计算机科学与技术", 10, 28, False),
         ("软件工程", 8, 25, False),
         ("电子信息工程", 6, 22, False),
@@ -1210,34 +1302,27 @@ def get_province_scores(uni_id: int):
         ("自动化", 4, 18, False),
         ("电气工程及其自动化", 2, 16, False),
         ("通信工程", 5, 20, False),
-        # 医学
         ("临床医学", 6, 25, False),
         ("口腔医学", 8, 28, False),
         ("药学", -5, 8, False),
-        # 经管热门
         ("金融学", 5, 22, True),
         ("会计学", 2, 16, True),
         ("经济学", 0, 12, True),
         ("国际经济与贸易", -3, 8, True),
-        # 文史法
         ("法学", -2, 12, True),
         ("汉语言文学", -5, 6, True),
         ("英语", -6, 4, True),
         ("新闻传播学", -6, 4, True),
-        # 理学
         ("数学与应用数学", 0, 14, False),
         ("物理学", -4, 10, False),
         ("化学", -8, 4, False),
-        # 工科其他
         ("土木工程", -12, -2, False),
         ("机械工程", -8, 2, False),
         ("建筑学", -6, 4, False),
-        # 师范教育
         ("教育学", -8, 2, True),
         ("心理学", -4, 8, True),
     ]
 
-    # 省份竞争难度系数（高考大省分数更高）
     prov_difficulty = {
         "河南": 15, "山东": 12, "河北": 10, "江苏": 8, "广东": 6,
         "安徽": 8, "四川": 6, "湖南": 5, "湖北": 4, "浙江": 3,
@@ -1247,11 +1332,7 @@ def get_province_scores(uni_id: int):
         "青海": -15, "宁夏": -12, "新疆": -10, "西藏": -20,
         "北京": -5, "天津": -3, "上海": -5, "海南": -8,
     }
-
-    # 本省招生优惠（本省高校在本省分数线通常低5-15分）
     local_bonus = -8
-
-    # 各层次专业数量配置
     level_config = {
         "985": {"hot": 6, "mid": 6, "cold": 5, "total": 17},
         "211": {"hot": 5, "mid": 5, "cold": 4, "total": 14},
@@ -1260,17 +1341,10 @@ def get_province_scores(uni_id: int):
         "二本": {"hot": 2, "mid": 3, "cold": 4, "total": 9},
     }
     cfg = level_config.get(level, level_config["二本"])
-
-    # 按热度分类专业
-    hot_majors = [m for m in all_majors if m[1] >= 5]     # 最低偏移>=5
-    mid_majors = [m for m in all_majors if -2 <= m[1] < 5] # 最低偏移-2~4
-    cold_majors = [m for m in all_majors if m[1] < -2]     # 最低偏移<-2
-
-    selected_hot = hot_majors[:cfg["hot"]]
-    selected_mid = mid_majors[:cfg["mid"]]
-    selected_cold = cold_majors[:cfg["cold"]]
-    selected = selected_hot + selected_mid + selected_cold
-
+    hot_majors = [m for m in all_majors if m[1] >= 5]
+    mid_majors = [m for m in all_majors if -2 <= m[1] < 5]
+    cold_majors = [m for m in all_majors if m[1] < -2]
+    selected = hot_majors[:cfg["hot"]] + mid_majors[:cfg["mid"]] + cold_majors[:cfg["cold"]]
     new_gaokao_provinces = {"北京", "天津", "上海", "浙江", "山东", "海南"}
 
     major_scores = {}
@@ -1280,14 +1354,12 @@ def get_province_scores(uni_id: int):
         is_local = (prov == uni_loc)
         diff_adj = prov_difficulty.get(prov, 0)
         local_adj = local_bonus if is_local else 0
-
         majors_list = []
         for major_name, min_off, max_off, has_wenke in selected:
             offset = random.randint(min_off, max_off)
             prov_offset = int(diff_adj * random.uniform(0.5, 1.2))
             loc_offset = int(local_adj * random.uniform(0.6, 1.0))
             sci_score = max(200, base + offset + prov_offset + loc_offset)
-
             if is_new:
                 majors_list.append({"major": major_name, "score": sci_score, "type": "综合"})
             else:
@@ -1296,7 +1368,6 @@ def get_province_scores(uni_id: int):
                 majors_list.append({"major": major_name, "score": sci_score, "type": "理科"})
                 if has_wenke:
                     majors_list.append({"major": major_name, "score": wen_score, "type": "文科"})
-
         majors_list.sort(key=lambda x: x["score"], reverse=True)
         major_scores[prov] = majors_list
 
