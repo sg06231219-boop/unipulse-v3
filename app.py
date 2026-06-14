@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, re, sqlite3, datetime, random, secrets, threading
 
-app = FastAPI(title="UniPulse v3", version="3.9.0")
+app = FastAPI(title="UniPulse v3", version="3.10.0")
 
 # CORS
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -55,7 +55,7 @@ def _backup_to_seed_json():
         uni_list = [dict(u) for u in unis]
         seed_data = {
             "universities": uni_list,
-            "version": "3.9.0", "updated_at": datetime.datetime.now().isoformat(),
+            "version": "3.10.0", "updated_at": datetime.datetime.now().isoformat(),
         }
         backup_path = os.path.join(DATA_DIR, "seed_backup.json")
         content = json.dumps(seed_data, ensure_ascii=False)
@@ -449,7 +449,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"3.9.0","service":"UniPulse"}
+    return {"status":"ok","version":"3.10.0","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
@@ -1136,7 +1136,7 @@ def employment_statistics():
 
 @app.get("/api/universities/{uni_id}/province-scores")
 def get_province_scores(uni_id: int):
-    """获取某高校各省分数线（含分专业分数线）"""
+    """获取某高校各省分数线（含分专业分数线，22个专业类，31省差异化）"""
     conn = get_db()
     row = conn.execute("SELECT * FROM universities WHERE id=?", (uni_id,)).fetchone()
     if not row:
@@ -1147,6 +1147,7 @@ def get_province_scores(uni_id: int):
     uni_name = d.get("name", "")
     gaokao_score = d.get("gaokao_score", 500) or 500
     level = d.get("level", "二本") or "二本"
+    uni_loc = d.get("cn", "") or ""  # 高校所在省
     ps_raw = d.get("province_scores")
     base_scores = {}
     if ps_raw:
@@ -1155,7 +1156,6 @@ def get_province_scores(uni_id: int):
         except Exception:
             base_scores = {}
 
-    # If no province data, generate from gaokao_score with regional offsets
     if not base_scores:
         random.seed(uni_id)
         provinces = ["北京","天津","河北","山西","内蒙古","辽宁","吉林","黑龙江","上海","江苏","浙江","安徽","福建","江西","山东","河南","湖北","湖南","广东","广西","海南","重庆","四川","贵州","云南","西藏","陕西","甘肃","青海","宁夏","新疆"]
@@ -1163,45 +1163,105 @@ def get_province_scores(uni_id: int):
         for p in provinces:
             base_scores[p] = max(200, gaokao_score + offsets.get(p, 0) + random.randint(-8, 8))
 
-    # Generate major-specific scores per province
-    # New gaokao provinces use "综合", others split into "理科"/"文科"
+    # ── 22个专业类 + 分数偏移区间（相对校线）──
+    # 格式: (专业名, 最低偏移, 最高偏移, 文科是否招生)
+    all_majors = [
+        # 理工热门
+        ("计算机科学与技术", 10, 28, False),
+        ("软件工程", 8, 25, False),
+        ("电子信息工程", 6, 22, False),
+        ("人工智能", 12, 30, False),
+        ("数据科学与大数据技术", 8, 26, False),
+        ("自动化", 4, 18, False),
+        ("电气工程及其自动化", 2, 16, False),
+        ("通信工程", 5, 20, False),
+        # 医学
+        ("临床医学", 6, 25, False),
+        ("口腔医学", 8, 28, False),
+        ("药学", -5, 8, False),
+        # 经管热门
+        ("金融学", 5, 22, True),
+        ("会计学", 2, 16, True),
+        ("经济学", 0, 12, True),
+        ("国际经济与贸易", -3, 8, True),
+        # 文史法
+        ("法学", -2, 12, True),
+        ("汉语言文学", -5, 6, True),
+        ("英语", -6, 4, True),
+        ("新闻传播学", -6, 4, True),
+        # 理学
+        ("数学与应用数学", 0, 14, False),
+        ("物理学", -4, 10, False),
+        ("化学", -8, 4, False),
+        # 工科其他
+        ("土木工程", -12, -2, False),
+        ("机械工程", -8, 2, False),
+        ("建筑学", -6, 4, False),
+        # 师范教育
+        ("教育学", -8, 2, True),
+        ("心理学", -4, 8, True),
+    ]
+
+    # 省份竞争难度系数（高考大省分数更高）
+    prov_difficulty = {
+        "河南": 15, "山东": 12, "河北": 10, "江苏": 8, "广东": 6,
+        "安徽": 8, "四川": 6, "湖南": 5, "湖北": 4, "浙江": 3,
+        "江西": 4, "山西": 3, "陕西": 2, "重庆": 2, "福建": 1,
+        "辽宁": -2, "吉林": -5, "黑龙江": -8, "内蒙古": -6,
+        "广西": -4, "云南": -6, "贵州": -8, "甘肃": -10,
+        "青海": -15, "宁夏": -12, "新疆": -10, "西藏": -20,
+        "北京": -5, "天津": -3, "上海": -5, "海南": -8,
+    }
+
+    # 本省招生优惠（本省高校在本省分数线通常低5-15分）
+    local_bonus = -8
+
+    # 各层次专业数量配置
+    level_config = {
+        "985": {"hot": 6, "mid": 6, "cold": 5, "total": 17},
+        "211": {"hot": 5, "mid": 5, "cold": 4, "total": 14},
+        "一本": {"hot": 3, "mid": 4, "cold": 4, "total": 11},
+        "双一流": {"hot": 4, "mid": 4, "cold": 3, "total": 11},
+        "二本": {"hot": 2, "mid": 3, "cold": 4, "total": 9},
+    }
+    cfg = level_config.get(level, level_config["二本"])
+
+    # 按热度分类专业
+    hot_majors = [m for m in all_majors if m[1] >= 5]     # 最低偏移>=5
+    mid_majors = [m for m in all_majors if -2 <= m[1] < 5] # 最低偏移-2~4
+    cold_majors = [m for m in all_majors if m[1] < -2]     # 最低偏移<-2
+
+    selected_hot = hot_majors[:cfg["hot"]]
+    selected_mid = mid_majors[:cfg["mid"]]
+    selected_cold = cold_majors[:cfg["cold"]]
+    selected = selected_hot + selected_mid + selected_cold
+
     new_gaokao_provinces = {"北京", "天津", "上海", "浙江", "山东", "海南"}
-    # Major categories with score offsets relative to base score
-    hot_majors = [("计算机类", 8, 25), ("金融学类", 5, 20), ("电子信息类", 6, 22), ("临床医学类", 3, 18), ("自动化类", 2, 15)]
-    mid_majors = [("经济学类", -2, 10), ("法学类", -3, 8), ("英语/外语类", -5, 5), ("新闻传播类", -5, 5), ("教育学类", -6, 3)]
-    cold_majors = [("土木类", -10, -2), ("化学类", -12, -3), ("石油工程类", -15, -5), ("建筑类", -8, 0), ("药学类", -7, 2)]
-    other_majors = [("数学类", 0, 12), ("物理学类", -2, 10), ("口腔医学类", 5, 22), ("电气类", 2, 14), ("机械类", -6, 2), ("心理学类", -3, 8)]
-
-    # Number of majors by level
-    level_major_count = {"985": 8, "211": 6, "一本": 5, "二本": 4, "双一流": 6}
-    num_majors = level_major_count.get(level, 4)
-
-    # Select majors based on level (higher level = more hot majors)
-    if level == "985":
-        selected = hot_majors[:3] + mid_majors[:2] + other_majors[:3]
-    elif level == "211":
-        selected = hot_majors[:2] + mid_majors[:2] + other_majors[:2]
-    elif level in ("一本", "双一流"):
-        selected = hot_majors[:1] + mid_majors[:2] + other_majors[:2]
-    else:
-        selected = mid_majors[:1] + cold_majors[:2] + other_majors[:1]
 
     major_scores = {}
-    random.seed(uni_id * 1000)  # Consistent generation per university
+    random.seed(uni_id * 1000)
     for prov, base in base_scores.items():
         is_new = prov in new_gaokao_provinces
+        is_local = (prov == uni_loc)
+        diff_adj = prov_difficulty.get(prov, 0)
+        local_adj = local_bonus if is_local else 0
+
         majors_list = []
-        for major_name, min_off, max_off in selected:
+        for major_name, min_off, max_off, has_wenke in selected:
             offset = random.randint(min_off, max_off)
-            sci_score = max(200, base + offset)
+            prov_offset = int(diff_adj * random.uniform(0.5, 1.2))
+            loc_offset = int(local_adj * random.uniform(0.6, 1.0))
+            sci_score = max(200, base + offset + prov_offset + loc_offset)
+
             if is_new:
                 majors_list.append({"major": major_name, "score": sci_score, "type": "综合"})
             else:
-                # 理科 score = base + offset, 文科 score = base - random(5,15) + offset*0.6
-                wen_score = max(200, base - random.randint(5, 15) + int(offset * 0.6))
+                wen_base_off = random.randint(5, 20)
+                wen_score = max(200, base - wen_base_off + int(offset * 0.5) + prov_offset + loc_offset)
                 majors_list.append({"major": major_name, "score": sci_score, "type": "理科"})
-                majors_list.append({"major": major_name, "score": wen_score, "type": "文科"})
-        # Sort by score descending
+                if has_wenke:
+                    majors_list.append({"major": major_name, "score": wen_score, "type": "文科"})
+
         majors_list.sort(key=lambda x: x["score"], reverse=True)
         major_scores[prov] = majors_list
 
