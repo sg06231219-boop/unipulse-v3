@@ -341,6 +341,15 @@ input,select,textarea{font-family:var(--font)}
 .prov-score-card.score-hard .prov-val{color:var(--red)}
 .prov-score-card.score-hard .prov-diff{color:var(--red)}
 
+/* ── 省分数线专业详情 ── */
+.prov-detail-row td{border-bottom:1px solid var(--border)!important}
+.prov-major-table th{font-size:0.75rem!important;padding:6px 8px!important}
+.prov-major-table td{padding:5px 8px!important;font-size:0.8rem!important}
+.prov-major-table tr:hover{background:rgba(255,255,255,0.04)!important}
+.prov-kele-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:3px 10px;color:var(--text3);font-size:0.78rem;cursor:pointer;transition:all .2s}
+.prov-kele-btn:hover{border-color:var(--accent);color:var(--text1)}
+.prov-kele-btn.active{background:rgba(79,143,255,0.15);border-color:var(--accent);color:var(--accent2)}
+
 /* ── 校园生活卡片 ── */
 .campus-section{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
 .campus-card{padding:1.2rem;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border)}
