@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """UniPulse v3 — 高考选校平台 · 后端"""
 from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.staticfiles import StaticFiles
@@ -10,8 +10,13 @@ import json, os, time, hashlib, re, sqlite3, datetime, random, secrets, threadin
 
 app = FastAPI(title="UniPulse v3", version="4.0.0")
 
-# CORS
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# CORS — 收窄为同源+已知域名
+_ORIGINS = [
+    "https://unipulse-v3.onrender.com",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+app.add_middleware(CORSMiddleware, allow_origins=_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "unipulse.db")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -497,7 +502,7 @@ def get_data_update_status():
 
 @app.post("/api/data-update/trigger")
 @app.post("/admin/data-update/trigger")
-def trigger_data_update():
+def trigger_data_update(auth: bool = Depends(verify_admin)):
     global _LAST_AUTO_UPDATE
     with _UPDATE_LOCK:
         result = perform_data_update()
@@ -1124,7 +1129,7 @@ def level_stats():
     return [{"level":r["level"],"count":r["cnt"]} for r in rows]
 
 @app.get("/api/admin/stats")
-def admin_stats():
+def admin_stats(auth: bool = Depends(verify_admin)):
     conn = get_db()
     uc = conn.execute("SELECT COUNT(*) FROM universities").fetchone()[0]
     ec = conn.execute("SELECT COUNT(*) FROM employment").fetchone()[0]
@@ -1470,10 +1475,11 @@ def admin_hide_comment(comment_id: int, body: dict = None, auth: bool = Depends(
 
 @app.get("/admin")
 def admin_panel():
+    # 前端页面本身公开，认证在API层执行
     return FileResponse(os.path.join(static_dir, "admin.html"))
 
 @app.put("/admin/universities/{uni_id}")
-def admin_update_uni(uni_id: int, body: dict):
+def admin_update_uni(uni_id: int, body: dict, auth: bool = Depends(verify_admin)):
     conn = get_db()
     r = conn.execute("SELECT 1 FROM universities WHERE id=?", (uni_id,)).fetchone()
     if not r:
@@ -1498,7 +1504,7 @@ def admin_update_uni(uni_id: int, body: dict):
     return {"status": "updated"}
 
 @app.delete("/admin/universities/{uni_id}")
-def admin_delete_uni(uni_id: int):
+def admin_delete_uni(uni_id: int, auth: bool = Depends(verify_admin)):
     conn = get_db()
     conn.execute("DELETE FROM universities WHERE id=?", (uni_id,))
     conn.execute("DELETE FROM employment WHERE uni_id=?", (uni_id,))
@@ -1575,7 +1581,7 @@ def user_delete_comment(comment_id: int, body: dict = None):
     return {"status": "deleted"}
 
 @app.post("/admin/reseed")
-def admin_reseed():
+def admin_reseed(auth: bool = Depends(verify_admin)):
     """重新灌入种子数据"""
     conn = get_db()
     conn.executescript("DELETE FROM forum_comments; DELETE FROM forum_posts; DELETE FROM favorites; DELETE FROM analytics; DELETE FROM employment; DELETE FROM programs; DELETE FROM universities;")
@@ -1584,7 +1590,7 @@ def admin_reseed():
     return {"status": "reseeded"}
 
 @app.delete("/admin/forum-purge")
-def admin_forum_purge():
+def admin_forum_purge(auth: bool = Depends(verify_admin)):
     conn = get_db()
     conn.execute("DELETE FROM forum_comments")
     conn.execute("DELETE FROM forum_posts")
@@ -1710,3 +1716,4 @@ def index():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
