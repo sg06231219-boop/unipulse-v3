@@ -389,7 +389,7 @@ async function loadProvinceMajorScores(uniId, containerId) {
 
     // ── 省份表格 ──
     html += '<div style="overflow-x:auto"><table class="emp-table" id="provTable"><thead><tr>';
-    html += '<th style="width:28px"></th><th>省份</th><th>校线</th><th>专业数</th>';
+    html += '<th style="width:28px"></th><th>省份</th><th>校线</th><th>专业数</th><th>年份</th>';
     if (userScore) html += '<th>差距</th><th>评估</th>';
     html += '</tr></thead><tbody>';
 
@@ -400,9 +400,9 @@ async function loadProvinceMajorScores(uniId, containerId) {
       const majors = majorScores[prov] || [];
       const hasMajors = majors.length > 0;
       const rowId = 'prov_' + prov.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '');
-      // 统计各科类专业数
+      // 统计各科类专业数（兼容新旧格式）
       const keleCounts = {};
-      majors.forEach(m => { keleCounts[m.type] = (keleCounts[m.type] || 0) + 1; });
+      majors.forEach(m => { const t = m.type || m.subject_group || '综合'; keleCounts[t] = (keleCounts[t] || 0) + 1; });
       const keleSummary = Object.entries(keleCounts).map(([k, v]) => k + v).join(' ');
 
       html += '<tr class="prov-row" data-prov="' + esc(prov) + '" data-score="' + base + '" data-gap="' + (gap || 0) + '" data-types="' + Object.keys(keleCounts).join(',') + '" style="cursor:pointer" onclick="toggleProvMajors(\'' + rowId + '\')">';
@@ -410,6 +410,9 @@ async function loadProvinceMajorScores(uniId, containerId) {
       html += '<td>' + esc(prov) + '</td>';
       html += '<td><strong>' + base + '</strong></td>';
       html += '<td style="font-size:0.82rem;color:var(--text3)">' + majors.length + ' <span style="font-size:0.75rem">(' + keleSummary + ')</span></td>';
+      // 年份标签
+      const years = [...new Set(majors.map(m => m.year).filter(Boolean))].sort().reverse();
+      if (years.length) html += '<td style="font-size:0.78rem;color:var(--text3)">' + years.join('/') + '</td>';
       if (userScore) {
         html += '<td style="color:' + (gap >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (gap >= 0 ? '+' : '') + gap + '</td>';
         html += '<td><span class="uni-card-chance ' + (chance ? chance.cls : '') + '">' + (chance ? chance.text : '-') + '</span></td>';
@@ -418,7 +421,7 @@ async function loadProvinceMajorScores(uniId, containerId) {
 
       // 专业详情行（默认收起）
       if (hasMajors) {
-        html += '<tr id="' + rowId + '" class="prov-detail-row" style="display:none"><td colspan="' + (userScore ? 6 : 4) + '" style="padding:0">';
+        html += '<tr id="' + rowId + '" class="prov-detail-row" style="display:none"><td colspan="' + (userScore ? 8 : 6) + '" style="padding:0">';
         html += '<div style="padding:0.6rem 0.8rem;background:rgba(255,255,255,0.02)">';
         // 科类标签切换
         const types = Object.keys(keleCounts);
@@ -430,19 +433,35 @@ async function loadProvinceMajorScores(uniId, containerId) {
           });
           html += '</div>';
         }
-        html += '<table class="emp-table" style="margin:0;font-size:0.82rem"><thead><tr><th>专业</th><th>科类</th><th>分数线</th>';
+        html += '<table class="emp-table prov-major-table" style="margin:0;font-size:0.82rem"><thead><tr><th>专业名称</th><th>科类</th><th>选科要求</th><th>最低分</th><th>最低位次</th><th>年份</th>';
         if (userScore) html += '<th>差距</th><th>评估</th>';
         html += '</tr></thead><tbody>';
         for (const m of majors) {
-          const mGap = userScore ? userScore - m.score : null;
-          const mChance = mGap !== null ? getChanceInfo(mGap) : null;
-          html += '<tr class="major-row" data-type="' + m.type + '">';
-          html += '<td>' + esc(m.major) + '</td>';
-          html += '<td><span class="tag tag-' + (m.type === '理科' ? 'accent2' : m.type === '文科' ? 'warning' : 'info') + '" style="font-size:0.72rem;padding:1px 5px">' + m.type + '</span></td>';
-          html += '<td>' + m.score + '</td>';
+          const mScore = m.min_score != null ? m.min_score : m.score;
+          const mName = m.sp_name || m.major || '-';
+          const mSubjectGroup = m.subject_group || '';
+          const mSubjectReq = m.subject_req || '';
+          const mRank = m.min_rank != null ? m.min_rank : '';
+          const mYear = m.year || '';
+          const mType = m.type || m.subject_group || '综合';
+          const mGap = userScore ? userScore - mScore : null;
+          // 冲稳保分色：> score+20=稳(蓝), > score=冲(红), else=保(绿)
+          let chanceLabel, chanceColor, chanceGroup;
+          if (mGap !== null) {
+            if (mGap > 20) { chanceLabel = '稳'; chanceColor = 'var(--accent2)'; chanceGroup = 'wen'; }
+            else if (mGap > 0) { chanceLabel = '冲'; chanceColor = 'var(--red)'; chanceGroup = 'chong'; }
+            else { chanceLabel = '保'; chanceColor = 'var(--green)'; chanceGroup = 'bao'; }
+          }
+          html += '<tr class="major-row" data-type="' + esc(mType) + '">';
+          html += '<td style="white-space:nowrap">' + esc(mName) + '</td>';
+          html += '<td><span class="tag tag-' + (mType.includes('理') ? 'accent2' : mType.includes('文') ? 'warning' : 'info') + '" style="font-size:0.72rem;padding:1px 5px">' + esc(mType) + '</span></td>';
+          html += '<td style="font-size:0.78rem;color:var(--text3)">' + (mSubjectReq ? esc(mSubjectReq) : '-') + '</td>';
+          html += '<td><strong>' + mScore + '</strong></td>';
+          html += '<td style="color:var(--text3)">' + mRank + '</td>';
+          html += '<td style="color:var(--text3)">' + mYear + '</td>';
           if (userScore) {
             html += '<td style="color:' + (mGap >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (mGap >= 0 ? '+' : '') + mGap + '</td>';
-            html += '<td><span class="uni-card-chance ' + (mChance ? mChance.cls : '') + '" style="font-size:0.72rem">' + (mChance ? mChance.text : '-') + '</span></td>';
+            html += '<td><span class="uni-card-chance chance-' + chanceGroup + '" style="font-size:0.72rem">' + chanceLabel + '</span></td>';
           }
           html += '</tr>';
         }
