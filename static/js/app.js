@@ -441,7 +441,7 @@ async function loadProvinceMajorScores(uniId, containerId) {
           const mName = m.sp_name || m.major || '-';
           const mSubjectGroup = m.subject_group || '';
           const mSubjectReq = m.subject_req || '';
-          const mRank = m.min_rank != null ? m.min_rank : '';
+          const mRank = (m.min_rank != null && m.min_rank > 0) ? m.min_rank : '';
           const mYear = m.year || '';
           const mType = m.type || m.subject_group || '综合';
           const mGap = userScore ? userScore - mScore : null;
