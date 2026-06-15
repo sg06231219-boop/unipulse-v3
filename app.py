@@ -931,13 +931,13 @@ def stats():
     emp_count = conn.execute("SELECT COUNT(*) FROM employment").fetchone()[0]
     post_count = conn.execute("SELECT COUNT(*) FROM forum_posts").fetchone()[0]
     avg_salary = conn.execute("SELECT ROUND(AVG(avg_salary)) FROM universities WHERE avg_salary > 0").fetchone()[0]
-    avg_emp_rate = conn.execute("SELECT ROUND(AVG(employment_rate)*100,1) FROM universities WHERE employment_rate > 0").fetchone()[0]
+    avg_emp_rate = conn.execute("SELECT ROUND(AVG(employment_rate),1) FROM universities WHERE employment_rate > 0").fetchone()[0]
     regions = conn.execute("SELECT region, COUNT(*) as cnt FROM universities GROUP BY region ORDER BY cnt DESC").fetchall()
     levels = conn.execute("""
         SELECT
             SUM(CASE WHEN level LIKE '%985%' THEN 1 ELSE 0 END) as c985,
             SUM(CASE WHEN level LIKE '%211%' AND level NOT LIKE '%985%' THEN 1 ELSE 0 END) as c211,
-            SUM(CASE WHEN level LIKE '%双一流%' THEN 1 ELSE 0 END) as cdy,
+            SUM(CASE WHEN level LIKE '%双一流%' AND level NOT LIKE '%985%' AND level NOT LIKE '%211%' THEN 1 ELSE 0 END) as cdy,
             COUNT(*) as total
         FROM universities
     """).fetchone()
@@ -1690,7 +1690,8 @@ def export_wish_table(session_id: str, format: str = "json"):
         output.write("分组,序号,院校名称,参考分数线,层次,类型,地区,就业率,平均起薪,排名\n")
         for group in ["冲", "稳", "保"]:
             for i, u in enumerate(data[group], 1):
-                output.write(f"{group},{i},{u['name']},{u['gaokao_score']},{u['level']},{u['type']},{u['loc']},{round(u['employment_rate']*100) if u['employment_rate'] and u['employment_rate']<=1 else u['employment_rate']}%,{u['avg_salary']},{u['rank']}\n")
+                er = round(u['employment_rate']*100, 1) if u['employment_rate'] and u['employment_rate'] <= 1 else (round(u['employment_rate'], 1) if u['employment_rate'] else 0)
+                output.write(f"{group},{i},{u['name']},{u['gaokao_score']},{u['level']},{u['type']},{u['loc']},{er}%,{u['avg_salary']},{u['rank']}\n")
         from fastapi.responses import Response
         return Response(content=output.getvalue(), media_type="text/csv; charset=utf-8-sig",
             headers={"Content-Disposition": f"attachment; filename=wish_table_{session_id[:8]}.csv"})
