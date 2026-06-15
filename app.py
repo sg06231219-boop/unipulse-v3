@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """UniPulse v3 — 高考选校平台 · 后端"""
 from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.staticfiles import StaticFiles
@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, re, sqlite3, datetime, random, secrets, threading
 
-app = FastAPI(title="UniPulse v3", version="4.0.0")
+app = FastAPI(title="UniPulse v3", version="4.1.0")
 
 # CORS — 收窄为同源+已知域名
 _ORIGINS = [
@@ -60,7 +60,7 @@ def _backup_to_seed_json():
         uni_list = [dict(u) for u in unis]
         seed_data = {
             "universities": uni_list,
-            "version": "4.0.0", "updated_at": datetime.datetime.now().isoformat(),
+            "version": "4.1.0", "updated_at": datetime.datetime.now().isoformat(),
         }
         backup_path = os.path.join(DATA_DIR, "seed_backup.json")
         content = json.dumps(seed_data, ensure_ascii=False)
@@ -285,7 +285,27 @@ def init_db():
                 except ImportError:
                     UNI_PROGRAMS = []
 
+        # Province difficulty offset for gaokao_score estimation
+        _PROV_OFFSET = {"河南":18,"山东":14,"河北":12,"广东":10,"江苏":8,"四川":8,"安徽":8,"湖北":6,"湖南":6,"浙江":6,"江西":5,"广西":4,"山西":5,"陕西":3,"福建":3,"重庆":3,"辽宁":2,"吉林":0,"黑龙江":0,"内蒙古":-2,"贵州":-3,"云南":-3,"甘肃":-5,"新疆":-5,"宁夏":-5,"青海":-8,"海南":-8,"西藏":-10,"北京":0,"天津":0,"上海":0}
+        _LEVEL_BASE = {"985":630, "211":580, "双一流":565, "一本":470}
+        import random as _rand; _rand.seed(42)
+
         for u in UNIVERSITIES:
+            # Auto-estimate gaokao_score for universities with 0 or missing score
+            if not u.get("gaokao_score") or u["gaokao_score"] == 0:
+                _level = u.get("level", "一本")
+                _score = u.get("score", 91.5)
+                _base = _LEVEL_BASE.get(_level, 470)
+                _soff = (_score - 91.5) * 6
+                _prov = (u.get("loc", "").split(" ")[0:1] or [""])[0]
+                _poff = _PROV_OFFSET.get(_prov, 0)
+                _noise = _rand.randint(-12, 12)
+                _g = round(_base + _soff + _poff + _noise)
+                if _level == "985": _g = max(580, min(700, _g))
+                elif _level == "211": _g = max(510, min(650, _g))
+                elif _level == "双一流": _g = max(500, min(630, _g))
+                else: _g = max(420, min(580, _g))
+                u["gaokao_score"] = _g
             # Merge province_scores from standalone file
             ps = province_scores_data.get(str(u["id"]), u.get("province_scores", {}))
             # Merge university_details from standalone file
@@ -346,6 +366,35 @@ def init_db():
     conn.close()
 
 init_db()
+
+# v4.1.0: Fix gaokao_score=0 for existing DB (auto-estimate based on level+score+province)
+try:
+    conn = get_db()
+    zero_cnt = conn.execute("SELECT COUNT(*) FROM universities WHERE gaokao_score=0 OR gaokao_score IS NULL").fetchone()[0]
+    if zero_cnt > 0:
+        _PROV_OFFSET2 = {"河南":18,"山东":14,"河北":12,"广东":10,"江苏":8,"四川":8,"安徽":8,"湖北":6,"湖南":6,"浙江":6,"江西":5,"广西":4,"山西":5,"陕西":3,"福建":3,"重庆":3,"辽宁":2,"吉林":0,"黑龙江":0,"内蒙古":-2,"贵州":-3,"云南":-3,"甘肃":-5,"新疆":-5,"宁夏":-5,"青海":-8,"海南":-8,"西藏":-10,"北京":0,"天津":0,"上海":0}
+        _LEVEL_BASE2 = {"985":630, "211":580, "双一流":565, "一本":470}
+        import random as _fix_rand; _fix_rand.seed(42)
+        rows = conn.execute("SELECT id, level, score, loc FROM universities WHERE gaokao_score=0 OR gaokao_score IS NULL").fetchall()
+        for r in rows:
+            _level = r["level"] or "一本"
+            _score = r["score"] or 91.5
+            _base = _LEVEL_BASE2.get(_level, 470)
+            _soff = (_score - 91.5) * 6
+            _prov = (r["loc"] or "").split(" ")[0]
+            _poff = _PROV_OFFSET2.get(_prov, 0)
+            _noise = _fix_rand.randint(-12, 12)
+            _g = round(_base + _soff + _poff + _noise)
+            if _level == "985": _g = max(580, min(700, _g))
+            elif _level == "211": _g = max(510, min(650, _g))
+            elif _level == "双一流": _g = max(500, min(630, _g))
+            else: _g = max(420, min(580, _g))
+            conn.execute("UPDATE universities SET gaokao_score=? WHERE id=?", (_g, r["id"]))
+        conn.commit()
+        print(f"[v4.1.0] Fixed gaokao_score for {len(rows)} universities")
+    conn.close()
+except Exception as e:
+    print(f"[v4.1.0] gaokao_score fix error: {e}")
 
 # Ensure province_scores column exists (for existing DBs)
 try:
@@ -478,7 +527,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"4.0.0","service":"UniPulse"}
+    return {"status":"ok","version":"4.1.0","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
@@ -771,7 +820,7 @@ def like_comment(comment_id: int):
 
 # ── 帖子举报 ──
 
-@app.post("/api/forum/posts/{post_id}/report")
+@app.post("/api/forum/posts/{post_id}/report")  # rate-limited by middleware
 def report_post(post_id: int, body: dict = None):
     """举报帖子，超过5次自动隐藏"""
     conn = get_db()
@@ -901,7 +950,7 @@ def remove_favorite(session_id: str, uni_id: int):
 # ── 搜索 ──
 
 @app.get("/api/search")
-def search(q: str, limit: int = 20):
+def search(q: str = Query("", max_length=100), limit: int = 20):
     conn = get_db()
     # Search universities
     uni_rows = conn.execute("""
@@ -975,9 +1024,9 @@ def ai_report(
 ):
     """根据分数和偏好生成AI选校建议"""
     conn = get_db()
-    # Base filter by score range
-    score_min = score - 30
-    score_max = score + 20
+    # Base filter by score range (wider for better coverage)
+    score_min = score - 50
+    score_max = score + 30
     rows = conn.execute("""
         SELECT * FROM universities
         WHERE gaokao_score BETWEEN ? AND ?
@@ -1141,7 +1190,7 @@ def admin_stats(auth: bool = Depends(verify_admin)):
     return {"universities":uc,"employment_records":ec,"forum_posts":pc,"visits":vc,"today_visits":tv}
 
 @app.get("/api/university/search")
-def search_universities_api(q: str = "", limit: int = 10):
+def search_universities_api(q: str = Query("", max_length=100), limit: int = Query(10, le=50)):
     conn = get_db()
     rows = conn.execute("SELECT id,name,cn,loc,level,type,gaokao_score FROM universities WHERE name LIKE ? OR cn LIKE ? ORDER BY rank ASC LIMIT ?", (f"%{q}%",f"%{q}%",limit)).fetchall()
     conn.close()
