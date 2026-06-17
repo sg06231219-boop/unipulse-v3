@@ -189,6 +189,8 @@ function esc(s) { const d = document.createElement('div'); d.textContent = s; re
 // ── 高校列表 ──
 async function loadUniversities(page = 1) {
   currentUniPage = page;
+  // Show skeleton
+  if (typeof showUniGridSkeleton === 'function') showUniGridSkeleton();
   const q = $('uniSearch')?.value || '';
   const region = $('filterRegion')?.value || '';
   const level = $('filterLevel')?.value || '';
