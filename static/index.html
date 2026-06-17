@@ -14,6 +14,10 @@
 </head>
 <!-- 前端增强版本 -->
 <body>
+<!-- 阅读进度条 -->
+<div class="reading-progress-bar" id="readingProgress"></div>
+<!-- 回到顶部 -->
+<button class="back-to-top" id="backToTop" title="回到顶部">↑</button>
 <div id="app">
   <!-- 顶部导航 -->
   <nav class="topnav">
@@ -31,6 +35,10 @@
         <a href="#" data-page="wish-table" class="nav-link nav-wish" id="navWish">📋 志愿表</a>
         <a href="#" data-page="ai-report" class="nav-link nav-cta">🤖 AI选校</a>
         <a href="#" data-page="favorites" class="nav-link" id="navFav">⭐</a>
+        <button class="theme-toggle" id="themeToggle" title="切换亮色/暗色模式">🌓</button>
+      </div>
+      <div class="nav-links-mobile-extras" style="display:none">
+        <button class="theme-toggle" id="themeToggleMobile" title="切换模式">🌓</button>
       </div>
       <button class="nav-mobile-toggle" id="mobileToggle">☰</button>
     </div>
@@ -46,6 +54,7 @@
     <a href="#" data-page="wish-table">📋 志愿表</a>
     <a href="#" data-page="ai-report">🤖 AI选校</a>
     <a href="#" data-page="favorites">⭐ 收藏</a>
+    <button class="theme-toggle" id="themeToggleMobileMenu" style="margin:8px 1.5rem;width:fit-content">🌓 切换模式</button>
   </div>
 
   <!-- ===== 首页 ===== -->
@@ -74,7 +83,12 @@
           </div>
         </div>
         <div class="hero-stats" id="heroStats">
-          <div class="stat-pill">📊 加载中...</div>
+          <!-- 骨架屏：3个统计卡片 -->
+          <div class="skeleton-stats" id="heroStatsSkeleton">
+            <div class="skeleton-pill"></div>
+            <div class="skeleton-pill"></div>
+            <div class="skeleton-pill"></div>
+          </div>
         </div>
         <div class="hero-quick-links">
           <a href="#" class="hero-qlink" data-page="universities">🏫 高校库</a>
@@ -171,6 +185,15 @@
         <button class="btn btn-sm btn-ghost" id="clearFilters">重置</button>
       </div>
       <div class="results-info" id="uniResultsInfo"></div>
+      <!-- 骨架屏：高校列表 -->
+      <div class="skeleton-grid" id="uniGridSkeleton">
+        <div class="skeleton-card"><div class="skeleton-line w60 h20"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div><div class="skeleton-line h28 w30"></div><div style="display:flex;gap:8px;margin-top:6px"><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div></div></div>
+        <div class="skeleton-card"><div class="skeleton-line w60 h20"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div><div class="skeleton-line h28 w30"></div><div style="display:flex;gap:8px;margin-top:6px"><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div></div></div>
+        <div class="skeleton-card"><div class="skeleton-line w60 h20"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div><div class="skeleton-line h28 w30"></div><div style="display:flex;gap:8px;margin-top:6px"><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div></div></div>
+        <div class="skeleton-card"><div class="skeleton-line w60 h20"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div><div class="skeleton-line h28 w30"></div><div style="display:flex;gap:8px;margin-top:6px"><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div></div></div>
+        <div class="skeleton-card"><div class="skeleton-line w60 h20"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div><div class="skeleton-line h28 w30"></div><div style="display:flex;gap:8px;margin-top:6px"><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div></div></div>
+        <div class="skeleton-card"><div class="skeleton-line w60 h20"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div><div class="skeleton-line h28 w30"></div><div style="display:flex;gap:8px;margin-top:6px"><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div><div class="skeleton-line w30"></div></div></div>
+      </div>
       <div class="uni-grid" id="uniGrid"></div>
       <div class="pagination" id="uniPagination"></div>
     </div>
@@ -554,5 +577,95 @@
 </div>
 <script src="/static/js/app.js"></script>
 <script src="/static/js/app_new_detail.js"></script>
+<script>
+// ═══ 阅读进度条 ═══
+(function() {
+  const bar = document.getElementById('readingProgress');
+  if (!bar) return;
+  function updateProgress() {
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+    const docHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+    const progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+    bar.style.width = progress + '%';
+  }
+  window.addEventListener('scroll', updateProgress, { passive: true });
+  window.addEventListener('resize', updateProgress, { passive: true });
+  updateProgress();
+})();
+
+// ═══ 回到顶部 ═══
+(function() {
+  const btn = document.getElementById('backToTop');
+  if (!btn) return;
+  function toggleBtn() {
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+    if (scrollTop > 400) {
+      btn.classList.add('visible');
+    } else {
+      btn.classList.remove('visible');
+    }
+  }
+  btn.addEventListener('click', function() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  window.addEventListener('scroll', toggleBtn, { passive: true });
+  toggleBtn();
+})();
+
+// ═══ 骨架屏控制 ═══
+// 首页统计骨架屏
+(function() {
+  const skeleton = document.getElementById('heroStatsSkeleton');
+  const heroStats = document.getElementById('heroStats');
+  if (!skeleton) return;
+  // 监听 heroStats 内容变化，隐藏骨架屏
+  const observer = new MutationObserver(function() {
+    if (heroStats.querySelector('.stat-pill')) {
+      skeleton.style.display = 'none';
+      observer.disconnect();
+    }
+  });
+  observer.observe(heroStats, { childList: true, subtree: true });
+})();
+
+// 高校列表骨架屏
+(function() {
+  const skeleton = document.getElementById('uniGridSkeleton');
+  const uniGrid = document.getElementById('uniGrid');
+  if (!skeleton) return;
+  // 显示骨架屏函数
+  window.showUniGridSkeleton = function() {
+    skeleton.style.display = '';
+  };
+  // 监听 uniGrid 内容变化，隐藏骨架屏
+  const observer = new MutationObserver(function() {
+    if (uniGrid.children.length > 0) {
+      skeleton.style.display = 'none';
+    }
+  });
+  observer.observe(uniGrid, { childList: true });
+  // 初始显示骨架屏
+  skeleton.style.display = '';
+})();
+
+// ═══ 暗色/亮色模式切换 ═══
+(function() {
+  const saved = localStorage.getItem('unipulse_theme');
+  if (saved === 'light') {
+    document.body.classList.add('light-mode');
+  }
+
+  function toggleTheme() {
+    document.body.classList.toggle('light-mode');
+    const isLight = document.body.classList.contains('light-mode');
+    localStorage.setItem('unipulse_theme', isLight ? 'light' : 'dark');
+  }
+
+  // 绑定所有切换按钮
+  document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
+  document.getElementById('themeToggleMobile')?.addEventListener('click', toggleTheme);
+  document.getElementById('themeToggleMobileMenu')?.addEventListener('click', toggleTheme);
+})();
+</script>
 </body>
 </html>
