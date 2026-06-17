@@ -1,5 +1,13 @@
 /* UniPulse — 高考志愿填报神器 · 暗色主题 */
 :root {
+  /* 亮色模式变量（默认暗色） */
+  --lm-bg: #f5f7fa; --lm-bg2: #eef1f6; --lm-bg3: #e4e8ef; --lm-bg4: #d9dde6;
+  --lm-surface: #ffffff; --lm-surface2: #f0f2f5; --lm-surface3: #e8ebf0;
+  --lm-border: #d1d5db; --lm-border2: #b0b7c3;
+  --lm-text: #1a202c; --lm-text2: #4a5568; --lm-text3: #9ca3af;
+  --lm-accent: #4f46e5; --lm-accent2: #6366f1; --lm-accent3: #818cf8;
+  --lm-accent-glow: rgba(79,70,229,0.2);
+
   --bg: #060b1a; --bg2: #0c1225; --bg3: #131b30; --bg4: #1a2340;
   --surface: #111c35; --surface2: #182547; --surface3: #1e2f55;
   --border: #1e3055; --border2: #2a4070;
@@ -537,3 +545,167 @@ input,select,textarea{font-family:var(--font)}
 .major-browse-icon { font-size:2rem; margin-bottom:0.5rem; }
 .major-browse-name { font-size:0.95rem; font-weight:700; color:var(--text1); }
 .major-browse-count { font-size:0.8rem; color:var(--text3); margin-top:0.3rem; }
+
+/* ═══ 阅读进度条 ═══ */
+.reading-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--purple));
+  z-index: 200;
+  transition: width 0.1s linear;
+  pointer-events: none;
+  border-radius: 0 2px 2px 0;
+}
+
+/* ═══ 回到顶部按钮 ═══ */
+.back-to-top {
+  position: fixed;
+  bottom: 80px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 150;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+.back-to-top.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.back-to-top:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--accent-glow);
+}
+@media(max-width:768px){
+  .back-to-top { bottom: 90px; right: 16px; }
+}
+
+/* ═══ 骨架屏 ═══ */
+.skeleton-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem;
+  overflow: hidden;
+  position: relative;
+}
+.skeleton-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+  animation: shimmerSweep 1.5s infinite;
+}
+.skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--bg3);
+  margin-bottom: 10px;
+}
+.skeleton-line.w60 { width: 60%; }
+.skeleton-line.w80 { width: 80%; }
+.skeleton-line.w40 { width: 40%; }
+.skeleton-line.w50 { width: 50%; }
+.skeleton-line.w30 { width: 30%; }
+.skeleton-line.h20 { height: 20px; }
+.skeleton-line.h28 { height: 28px; }
+.skeleton-line.h36 { height: 36px; border-radius: 18px; }
+.skeleton-pill {
+  display: inline-block;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--bg3);
+  min-width: 100px;
+}
+@keyframes shimmerSweep {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* 骨架屏网格复用 uni-grid */
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+.skeleton-stats {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ═══ 暗色/亮色模式切换 ═══ */
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 1.05rem;
+  cursor: pointer;
+  color: var(--text2);
+  transition: all var(--transition);
+  line-height: 1;
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent2);
+  background: rgba(79,143,255,0.08);
+}
+
+/* 亮色模式覆盖 */
+body.light-mode {
+  --bg: var(--lm-bg); --bg2: var(--lm-bg2); --bg3: var(--lm-bg3); --bg4: var(--lm-bg4);
+  --surface: var(--lm-surface); --surface2: var(--lm-surface2); --surface3: var(--lm-surface3);
+  --border: var(--lm-border); --border2: var(--lm-border2);
+  --text: var(--lm-text); --text2: var(--lm-text2); --text3: var(--lm-text3);
+  --accent: var(--lm-accent); --accent2: var(--lm-accent2); --accent3: var(--lm-accent3);
+  --accent-glow: var(--lm-accent-glow);
+}
+body.light-mode .topnav {
+  background: rgba(255,255,255,0.88);
+}
+body.light-mode .hero-bg {
+  background: radial-gradient(ellipse 80% 60% at 50% 30%, rgba(79,70,229,0.08), transparent 70%),
+              radial-gradient(ellipse 60% 50% at 20% 80%, rgba(99,102,241,0.05), transparent 60%),
+              radial-gradient(ellipse 50% 40% at 80% 70%, rgba(16,185,129,0.04), transparent 50%);
+}
+body.light-mode .skeleton-card::after {
+  background: linear-gradient(90deg, transparent, rgba(0,0,0,0.04), transparent);
+}
+body.light-mode .back-to-top {
+  background: #fff;
+  border-color: var(--lm-border);
+  color: var(--lm-text2);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+body.light-mode .back-to-top:hover {
+  background: var(--lm-accent);
+  color: #fff;
+  border-color: var(--lm-accent);
+}
+body.light-mode .reading-progress-bar {
+  background: linear-gradient(90deg, var(--lm-accent), #818cf8);
+}
