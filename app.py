@@ -343,11 +343,12 @@ def init_db():
                  e["employment_rate"],e["pressure"],e["prospects"],e["description"]))
 
         for p in FORUM_POSTS:
-            c.execute("""INSERT INTO forum_posts (title,category,author,content,views,likes,tags,created_at)
-                VALUES (?,?,?,?,?,?,?,?)""",
+            c.execute("""INSERT INTO forum_posts (title,category,author,content,views,likes,tags,created_at,is_pinned)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
                 (p["title"],p.get("category","讨论"),p["author"],p["content"],p["views"],p["likes"],
                  (json.dumps(json.loads(p["tags"]),ensure_ascii=False) if isinstance(p.get("tags"),str) else json.dumps(p.get("tags",[]),ensure_ascii=False)),
-                 p.get("created_at",datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))))
+                 p.get("created_at",datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                 p.get("is_pinned",0)))
 
         for cm in FORUM_COMMENTS:
             c.execute("""INSERT INTO forum_comments (post_id,author,text,likes,created_at)
