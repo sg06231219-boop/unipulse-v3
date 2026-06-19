@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import json, os, time, hashlib, re, sqlite3, datetime, random, secrets, threading, uuid
+import json, os, time, hashlib, hmac, re, sqlite3, datetime, random, secrets, threading, uuid
 
 app = FastAPI(title="UniPulse v3", version="4.1.0")
 
@@ -22,6 +22,23 @@ app.add_middleware(CORSMiddleware, allow_origins=_ORIGINS, allow_methods=["*"], 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "unipulse.db")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# ── 密码哈希 ──
+def _admin_hash(password: str, salt: str = None) -> tuple:
+    """管理员密码哈希: SHA256 + salt，返回 (hash_hex, salt_hex)"""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    h = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+    return h, salt
+
+def _admin_verify(password: str, stored_hash: str, stored_salt: str = None) -> bool:
+    """验证管理员密码，支持旧版无盐兼容"""
+    if stored_salt:
+        h, _ = _admin_hash(password, stored_salt)
+        return hmac.compare_digest(h, stored_hash)
+    return hmac.compare_digest(
+        hashlib.sha256(password.encode()).hexdigest(), stored_hash
+    )
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -212,6 +229,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
+        password_salt TEXT,
         role TEXT DEFAULT 'admin',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -360,10 +378,10 @@ def init_db():
 
         conn.commit()
 
-    # Default admin (password: admin123)
-    admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
-    conn.execute("INSERT OR IGNORE INTO admin_users (username, password_hash, role) VALUES (?,?,?)",
-        ("admin", admin_hash, "admin"))
+    # Default admin (password: admin123, salted hash v4.2.0)
+    admin_hash, admin_salt = _admin_hash("admin123")
+    conn.execute("INSERT OR IGNORE INTO admin_users (username, password_hash, password_salt, role) VALUES (?,?,?,?)",
+        ("admin", admin_hash, admin_salt, "admin"))
     conn.commit()
 
     conn.close()
@@ -404,9 +422,14 @@ try:
     conn = get_db()
     conn.execute("ALTER TABLE universities ADD COLUMN province_scores TEXT")
     conn.close()
-except: pass  # Column already exists
+except Exception: pass  # Column already exists
 
-# v3.3.0: Add new columns to existing tables
+# v4.2.0: Add password_salt column to admin_users
+try:
+    conn = get_db()
+    conn.execute("ALTER TABLE admin_users ADD COLUMN password_salt TEXT")
+    conn.close()
+except Exception: pass  # Column already exists: Add new columns to existing tables
 # v3.4.0: Add wish_list table for existing DBs
 try:
     conn = get_db()
@@ -422,7 +445,7 @@ try:
     )""")
     conn.commit()
     conn.close()
-except: pass
+except Exception: pass
 
 # v4.2.0: Add uni_name column to wish_list for existing DBs
 try:
@@ -430,7 +453,7 @@ try:
     conn.execute("ALTER TABLE wish_list ADD COLUMN uni_name TEXT DEFAULT ''")
     conn.commit()
     conn.close()
-except: pass  # Column already exists
+except Exception: pass  # Column already exists
 
 _new_columns = {
     "universities": [
@@ -475,7 +498,7 @@ try:
             except Exception: pass
     conn.commit()
     conn.close()
-except: pass
+except Exception: pass
 
 # v3.5.1: Fix double-serialized tags in forum_posts
 try:
@@ -496,35 +519,90 @@ try:
         conn.commit()
         print(f"[v3.5.1] Fixed {fixed} double-serialized forum post tags")
     conn.close()
-except: pass
+except Exception: pass
 
 # ── 管理员认证 ──
 
-# 内存token存储
+# 管理员登录速率限制
+_ADMIN_LOGIN_WINDOW = 300  # 5分钟
+_ADMIN_LOGIN_MAX_ATTEMPTS = 5
+_admin_login_attempts = {}
+
+def _check_admin_rate(ip: str):
+    now = time.time()
+    attempts = _admin_login_attempts.get(ip, [])
+    attempts = [t for t in attempts if now - t < _ADMIN_LOGIN_WINDOW]
+    _admin_login_attempts[ip] = attempts
+    if len(attempts) >= _ADMIN_LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(429, "登录尝试过多，请5分钟后再试")
+    _admin_login_attempts[ip].append(now)
+
+# 管理员token（带过期）
+_ADMIN_TOKEN_TTL = 72 * 3600  # 72小时
 _admin_tokens = {}
 
+def _cleanup_expired_tokens():
+    now = time.time()
+    expired = [t for t, data in _admin_tokens.items() if data.get("exp", 0) < now]
+    for t in expired:
+        _admin_tokens.pop(t, None)
+
 def verify_admin(token: str = Header(None, alias="Authorization")) -> bool:
-    """验证管理员token"""
+    """验证管理员token（含过期检查）"""
     if not token:
         raise HTTPException(401, "Missing authorization token")
     token = token.replace("Bearer ", "")
     if token not in _admin_tokens:
         raise HTTPException(401, "Invalid or expired token")
+    data = _admin_tokens[token]
+    if data.get("exp", 0) < time.time():
+        _admin_tokens.pop(token, None)
+        raise HTTPException(401, "Token expired, please login again")
     return True
 
 @app.post("/admin/login")
-def admin_login(body: dict):
-    """管理员登录"""
+def admin_login(body: dict, request: Request):
+    """管理员登录（含限流+盐哈希）"""
+    ip = request.client.host if request.client else "unknown"
+    _check_admin_rate(ip)
+    _cleanup_expired_tokens()
+    
     username = body.get("username", "")
     password = body.get("password", "")
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    if not username or not password:
+        raise HTTPException(401, "用户名和密码不能为空")
+    
     conn = get_db()
-    user = conn.execute("SELECT * FROM admin_users WHERE username=? AND password_hash=?", (username, password_hash)).fetchone()
+    user = conn.execute(
+        "SELECT id, username, password_hash, password_salt, role FROM admin_users WHERE username=?",
+        (username,)
+    ).fetchone()
     conn.close()
+    
     if not user:
         raise HTTPException(401, "用户名或密码错误")
+    
+    stored_salt = user["password_salt"] if "password_salt" in user.keys() else None
+    if not _admin_verify(password, user["password_hash"], stored_salt):
+        raise HTTPException(401, "用户名或密码错误")
+    
+    # 自动升级旧密码为盐哈希
+    if not stored_salt:
+        new_hash, new_salt = _admin_hash(password)
+        conn = get_db()
+        conn.execute(
+            "UPDATE admin_users SET password_hash=?, password_salt=? WHERE id=?",
+            (new_hash, new_salt, user["id"])
+        )
+        conn.commit()
+        conn.close()
+    
     token = secrets.token_hex(32)
-    _admin_tokens[token] = {"username": username, "role": user["role"]}
+    _admin_tokens[token] = {
+        "username": username,
+        "role": user["role"],
+        "exp": time.time() + _ADMIN_TOKEN_TTL
+    }
     return {"token": token, "username": username, "role": user["role"]}
 
 @app.post("/admin/logout")
@@ -1458,7 +1536,7 @@ try:
     )""")
     conn.commit()
     conn.close()
-except: pass
+except Exception: pass
 
 # ── 论坛管理API（需管理员认证） ──
 
