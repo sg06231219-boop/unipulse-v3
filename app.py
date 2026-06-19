@@ -13,6 +13,7 @@ app = FastAPI(title="UniPulse v3", version="4.1.0")
 # CORS — 收窄为同源+已知域名
 _ORIGINS = [
     "https://unipulse-v3.onrender.com",
+    "https://lz-sg-unipulse.hf.space",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
 ]
@@ -127,7 +128,7 @@ def log_update(result):
             ("auto", result["status"], result["updated_count"], result["elapsed"],
              json.dumps(entry, ensure_ascii=False)))
         conn.commit(); conn.close()
-    except: pass
+    except Exception: pass
 
 # 启动后台更新线程
 _update_thread = threading.Thread(target=_auto_update_worker, daemon=True)
@@ -471,7 +472,7 @@ try:
         for col_name, col_type in cols:
             try:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}")
-            except: pass
+            except Exception: pass
     conn.commit()
     conn.close()
 except: pass
@@ -490,7 +491,7 @@ try:
                     conn.execute("UPDATE forum_posts SET tags=? WHERE id=?",
                         (json.dumps(tags, ensure_ascii=False), r["id"]))
                     fixed += 1
-        except: pass
+        except Exception: pass
     if fixed > 0:
         conn.commit()
         print(f"[v3.5.1] Fixed {fixed} double-serialized forum post tags")
@@ -548,7 +549,7 @@ def get_data_update_status():
     for u in last_updates:
         d = dict(u)
         try: d["details"] = json.loads(d["details"]) if d["details"] else {}
-        except: d["details"] = {}
+        except (json.JSONDecodeError, TypeError): d["details"] = {}
         history.append(d)
     total_unis = conn.execute("SELECT COUNT(*) FROM universities").fetchone()[0]
     total_emp = conn.execute("SELECT COUNT(*) FROM employment").fetchone()[0]
@@ -573,7 +574,7 @@ def trigger_data_update(auth: bool = Depends(verify_admin)):
              json.dumps(result, ensure_ascii=False)))
         conn.commit(); conn.close()
         try: _backup_to_seed_json()
-        except: pass
+        except Exception: pass
         return result
 
 @app.get("/api/data-update/history")
@@ -584,7 +585,7 @@ def get_update_history(limit: int = 10):
     for r in rows:
         d = dict(r)
         try: d["details"] = json.loads(d["details"]) if d["details"] else {}
-        except: d["details"] = {}
+        except (json.JSONDecodeError, TypeError): d["details"] = {}
         result.append(d)
     conn.close()
     return result
@@ -946,7 +947,7 @@ def add_favorite(session_id: str, uni_id: int):
     try:
         conn.execute("INSERT OR IGNORE INTO favorites (session_id,uni_id) VALUES (?,?)", (session_id,uni_id))
         conn.commit()
-    except: pass
+    except Exception: pass
     conn.close()
     return {"status":"added"}
 
@@ -1536,7 +1537,10 @@ def admin_hide_comment(comment_id: int, body: dict = None, auth: bool = Depends(
 @app.get("/admin")
 def admin_panel():
     # 前端页面本身公开，认证在API层执行
-    return FileResponse(os.path.join(static_dir, "admin.html"))
+    path = os.path.join(static_dir, "admin.html")
+    if not os.path.isfile(path):
+        return JSONResponse({"error": f"admin.html not found at {path}"}, status_code=404)
+    return FileResponse(path)
 
 @app.put("/admin/universities/{uni_id}")
 def admin_update_uni(uni_id: int, body: dict, auth: bool = Depends(verify_admin)):
@@ -1699,7 +1703,7 @@ def get_wish_table(session_id: str, request: Request = None):
     """获取志愿表 — 支持 cookie / URL path / query param 获取 session_id"""
     conn = get_db()
     rows = conn.execute("""
-        SELECT w.*, COALESCE(w.uni_name, u.cn) as uni_name,
+        SELECT w.*, COALESCE(w.uni_name, u.name) as uni_name,
                u.cn, u.gaokao_score, u.level, u.type, u.loc,
                u.employment_rate, u.avg_salary, u.stars, u.rank, u.tags, u.metrics
         FROM wish_list w JOIN universities u ON w.uni_id = u.id
@@ -1734,9 +1738,9 @@ def save_wish_table(body: dict, request: Request = None):
         uni_id = item["uni_id"]
         # 获取院校名称
         uni_name = ""
-        uni_row = conn.execute("SELECT cn FROM universities WHERE id=?", (uni_id,)).fetchone()
+        uni_row = conn.execute("SELECT name FROM universities WHERE id=?", (uni_id,)).fetchone()
         if uni_row:
-            uni_name = uni_row["cn"]
+            uni_name = uni_row["name"]
         conn.execute(
             "INSERT INTO wish_list (session_id, uni_id, uni_name, group_order, item_order) VALUES (?,?,?,?,?)",
             (session_id, uni_id, uni_name, grp_order, item.get("order", 0)))
@@ -1756,9 +1760,9 @@ def add_wish_item(body: dict, request: Request = None):
     conn = get_db()
     # 获取院校名称
     uni_name = ""
-    uni_row = conn.execute("SELECT cn FROM universities WHERE id=?", (uni_id,)).fetchone()
+    uni_row = conn.execute("SELECT name FROM universities WHERE id=?", (uni_id,)).fetchone()
     if uni_row:
-        uni_name = uni_row["cn"]
+        uni_name = uni_row["name"]
     else:
         conn.close()
         raise HTTPException(404, "University not found")
@@ -1826,13 +1830,19 @@ def export_wish_table(session_id: str, format: str = "json"):
 
 # ── 静态文件 ──
 
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-os.makedirs(static_dir, exist_ok=True)
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+static_dir = os.path.join(_BASE_DIR, "static")
+print(f"[UniPulse] BASE_DIR={_BASE_DIR} static_dir={static_dir}")
+if not os.path.isdir(static_dir):
+    os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(static_dir, "index.html"))
+    path = os.path.join(static_dir, "index.html")
+    if not os.path.isfile(path):
+        return JSONResponse({"error": f"index.html not found at {path}"}, status_code=404)
+    return FileResponse(path)
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,14 +1,18 @@
-IyBVbmlQdWxzZSB2MyDigJQg6auY6ICD6YCJ5qCh5bmz5Y+wCgrkuK3lm704
-MOaJgOmrmOagoeecn+WunuaVsOaNru+8jOa2teebluWIhuaVsOe6v+OAgeWw
-seS4muiWqui1hOOAgeS4k+S4muWvueavlOOAgUFJ5pm66IO96YCJ5qCh5oql
-5ZGK44CCCgojIyDlip/og70KLSDwn4+rIDgw5omA5Lit5Zu96auY5qCh5pWw
-5o2u77yI5YiG5pWw57q/L+WwseS4mueOhy/olqrotYQv5YWt57u06IO95Yqb
-5Zu+77yJCi0g8J+TmiAyMeS4quS4k+S4muWIhuexuyArIOWwseS4muaVsOaN
-rgotIPCfkqwg6YCJ5qCh6K665Z2b77yI5Y+R5biWL+ivhOiuui/ngrnotZ7v
-vIkKLSDwn6SWIEFJ5pm66IO96YCJ5qCh5oql5ZGK77yI5Yay56iz5L+d5pa5
-5qGI77yJCi0g4q2QIOaUtuiXj+WvueavlAotIPCflI0g5YWo56uZ5pCc57Si
-CgojIyDmlbDmja7mnaXmupAKLSDova/np5EyMDI15Lit5Zu95aSn5a2m5o6S
-5ZCNCi0g5ZCE6auY5qCh5bCx5Lia6LSo6YeP5oql5ZGKCi0g5pWZ6IKy6YOo
-5YWs5byA5pWw5o2uCgojIyDpg6jnvbIKYGBgYmFzaApwaXAgaW5zdGFsbCAt
-ciByZXF1aXJlbWVudHMudHh0CnV2aWNvcm4gYXBwOmFwcCAtLWhvc3QgMC4w
-LjAuMCAtLXBvcnQgJFBPUlQKYGBgCg==
+---
+title: UniPulse 选校
+emoji: 🎓
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+
+# UniPulse 选校助手
+
+高考志愿填报平台，整合1457所中国高校数据、真实省分数线、就业数据与AI选校报告。
+
+- 1457所高校信息
+- 31省真实分专业分数线（985/211）
+- 5839条就业记录
+- AI选校报告 / 冲稳保推荐
+- 志愿表管理 + 导出
