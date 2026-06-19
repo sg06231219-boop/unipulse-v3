@@ -378,6 +378,12 @@ def init_db():
 
         conn.commit()
 
+    # v4.2.0: Add password_salt column for existing DBs (idempotent)
+    try:
+        conn.execute("ALTER TABLE admin_users ADD COLUMN password_salt TEXT")
+        conn.commit()
+    except Exception: pass  # Column already exists
+
     # Default admin (password: admin123, salted hash v4.2.0)
     admin_hash, admin_salt = _admin_hash("admin123")
     conn.execute("INSERT OR IGNORE INTO admin_users (username, password_hash, password_salt, role) VALUES (?,?,?,?)",
@@ -424,12 +430,6 @@ try:
     conn.close()
 except Exception: pass  # Column already exists
 
-# v4.2.0: Add password_salt column to admin_users
-try:
-    conn = get_db()
-    conn.execute("ALTER TABLE admin_users ADD COLUMN password_salt TEXT")
-    conn.close()
-except Exception: pass  # Column already exists: Add new columns to existing tables
 # v3.4.0: Add wish_list table for existing DBs
 try:
     conn = get_db()
