@@ -959,6 +959,11 @@ async function submitAiReport(e) {
   if (!score || score < 300 || score > 750) { toast('请输入有效分数(300-750)'); return; }
   userScore = score;
   localStorage.setItem('unipulse_score', score);
+  // 付费墙：免费3次，之后9.9元解锁
+  if (!Paywall.tryUse('ai-report', { price: '9.9', desc: 'AI选校报告 & 冲稳保推荐 & 录取概率分析 & 分数线对比', freeLimit: 3, contactWx: 'a5050e' })) {
+    $('aiReportResult').classList.add('hidden');
+    return;
+  }
   const province = $('aiProvince').value;
   const interests = $('aiInterests').value;
   const subjects = $('aiSubjects').value;
