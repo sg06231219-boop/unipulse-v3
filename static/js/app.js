@@ -12,6 +12,7 @@ let userScore = parseInt(localStorage.getItem('unipulse_score')) || 0;
 let compareList = JSON.parse(localStorage.getItem('unipulse_compare') || '[]');
 let wishList = JSON.parse(localStorage.getItem('unipulse_wish') || '[]'); // [{id, name, score, group}]
 let browseMode = localStorage.getItem('unipulse_browse_mode') || 'university'; // 'university' | 'major'
+let chanceFilter = ''; // '冲' | '稳' | '保' | ''
 
 // ── 路由 ──
 function navigate(page, params = {}) {
@@ -101,9 +102,9 @@ async function loadHeroStats() {
     const s = await apiGet('/stats');
     $('heroStats').innerHTML = `
       <div class="stat-pill">🏫 <strong>${s.universities}</strong>所高校</div>
-      <div class="stat-pill">💼 <strong>${s.employment_records}</strong>条就业数据/div>
+      <div class="stat-pill">💼 <strong>${s.employment_records}</strong>条就业数据</div>
       <div class="stat-pill">💰 平均起薪 <strong>${(s.avg_salary/1000).toFixed(0)}K</strong></div>
-      <div class="stat-pill">📊 平均就业率<strong>${s.avg_employment_rate}%</strong></div>
+      <div class="stat-pill">📊 平均就业率 <strong>${s.avg_employment_rate}%</strong></div>
       <div class="stat-pill">985 <strong>${s.levels['985']}</strong>所 · 211 <strong>${s.levels['211']}</strong>所</div>
     `;
   } catch(e) {}
@@ -159,7 +160,7 @@ function renderUniCard(u, showChance = false) {
   const isFav = false;
   const isInWish = wishList.some(w => w.id === u.id);
   return `<div class="uni-card" data-page="uni-detail" data-id="${u.id}">
-    <button class="uni-card-fav ${isFav?'active':''}" onclick="event.stopPropagation();toggleFav(${u.id},this)">⭐/button>
+    <button class="uni-card-fav ${isFav?'active':''}" onclick="event.stopPropagation();toggleFav(${u.id},this)">⭐</button>
     ${chance ? `<div class="uni-card-chance-badge ${chance.cls}">${chance.text}</div>` : ''}
     <div class="uni-card-header">
       <div class="uni-card-name">${esc(u.name)}</div>
@@ -175,7 +176,7 @@ function renderUniCard(u, showChance = false) {
     <div class="uni-card-stats">
       <span class="uni-stat">就业率<strong>${u.employment_rate}%</strong></span>
       <span class="uni-stat">起薪 <strong>${formatSalary(u.avg_salary)}</strong></span>
-      <span class="uni-stat">⭐{u.stars}</span>
+      <span class="uni-stat">⭐${u.stars||'-'}</span>
     </div>
     <div class="uni-card-actions">
       <button class="btn btn-xs ${isInWish?'btn-primary':'btn-ghost'}" onclick="event.stopPropagation();addToWish(${u.id},'${esc(u.name)}',${u.gaokao_score})">${isInWish?'✓已加志愿':'+志愿表'}</button>
@@ -213,10 +214,11 @@ async function loadUniversities(page = 1) {
         return info.group === chanceFilter;
       });
     }
-    $('uniResultsInfo').textContent = `充${chanceFilter && userScore ? data.length : r.total} 所高校`;
+    $('uniResultsInfo').textContent = `共 ${chanceFilter && userScore ? data.length : r.total} 所高校`;
     $('uniGrid').innerHTML = data.map(u => renderUniCard(u, true)).join('');
     renderPagination('uniPagination', chanceFilter && userScore ? data.length : r.total, 20, page, p => loadUniversities(p));
   } catch(e) { toast('加载失败'); }
+  hideUniGridSkeleton();
 }
 
 function filterByScore(score) {
@@ -264,15 +266,15 @@ async function loadUniDetail(id) {
           </div>`).join('')}
         <div class="metric-card">
           <div class="metric-val" style="color:var(--green)">${u.employment_rate}%</div>
-          <div class="metric-label">就业率/div>
+          <div class="metric-label">就业率</div>
           <div class="metric-bar"><div class="metric-bar-fill fill-green" style="width:${u.employment_rate}%"></div></div>
         </div>
         <div class="metric-card">
           <div class="metric-val" style="color:var(--accent2)">${formatSalary(u.avg_salary)}</div>
-          <div class="metric-label">平均起薪/月/div>
+          <div class="metric-label">平均起薪/月</div>
         </div>
         <div class="metric-card">
-          <div class="metric-val" style="color:var(--yellow)">¥${u.tuition?.toLocaleString()}/年/div>
+          <div class="metric-val" style="color:var(--yellow)">¥${u.tuition?.toLocaleString()}/年</div>
           <div class="metric-label">学费</div>
         </div>
       </div>
@@ -281,7 +283,7 @@ async function loadUniDetail(id) {
       <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:0.8rem">💼 专业就业数据</h2>
       <div style="overflow-x:auto">
         <table class="emp-table">
-          <thead><tr><th>专业</th><th>平均薪资</th><th>起薪</th><th>就业率/th><th>内卷指数</th><th>前景</th></tr></thead>
+          <thead><tr><th>专业</th><th>平均薪资</th><th>起薪</th><th>就业率</th><th>内卷指数</th><th>前景</th></tr></thead>
           <tbody>${u.programs.map(p => `<tr>
             <td><strong>${esc(p.program_name)}</strong></td>
             <td>${formatSalary(p.salary_avg)}</td>
@@ -292,7 +294,7 @@ async function loadUniDetail(id) {
           </tr>`).join('')}</tbody>
         </table>
       </div>
-      ${u.programs.map(p => p.description ? `<p style="font-size:0.82rem;color:var(--text3);margin-top:0.5rem"><strong>${esc(p.program_name)}，/strong>${esc(p.description)}</p>` : '').join('')}
+      ${u.programs.map(p => p.description ? `<p style="font-size:0.82rem;color:var(--text3);margin-top:0.5rem"><strong>${esc(p.program_name)}</strong>：${esc(p.description)}</p>` : '').join('')}
       ` : ''}
 
       <!-- 详情页Tab切换 -->
@@ -308,7 +310,7 @@ async function loadUniDetail(id) {
         <h2 style="font-size:1.2rem;font-weight:800;margin:1rem 0 0.8rem">💼 专业就业数据</h2>
         <div style="overflow-x:auto">
           <table class="emp-table">
-            <thead><tr><th>专业</th><th>平均薪资</th><th>起薪</th><th>就业率/th><th>内卷指数</th><th>前景</th></tr></thead>
+            <thead><tr><th>专业</th><th>平均薪资</th><th>起薪</th><th>就业率</th><th>内卷指数</th><th>前景</th></tr></thead>
             <tbody>${u.programs.map(p => `<tr>
               <td><strong>${esc(p.program_name)}</strong></td>
               <td>${formatSalary(p.salary_avg)}</td>
@@ -375,8 +377,8 @@ async function loadProvinceMajorScores(uniId, containerId) {
     html += '</select>';
     // 排序
     html += '<select id="provSortBy" onchange="filterProvRows()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 8px;color:var(--text1);font-size:0.85rem;outline:none">';
-    html += '<option value="name">按省份/option><option value="score-asc">分数低→高/option><option value="score-desc">分数高→低/option>';
-    if (userScore) html += '<option value="gap-desc">差距大→小/option>';
+    html += '<option value="name">按省份</option><option value="score-asc">分数低→高</option><option value="score-desc">分数高→低</option>';
+    if (userScore) html += '<option value="gap-desc">差距大→小</option>';
     html += '</select>';
     // 统计
     html += '<span id="provCount" style="color:var(--text3);font-size:0.82rem;margin-left:auto">' + provinces.length + '个省份· ' + Object.values(majorScores).reduce((a, b) => a + b.length, 0) + '条专业分数线</span>';
@@ -384,14 +386,14 @@ async function loadProvinceMajorScores(uniId, containerId) {
 
     // ── 用户分数提示 ──
     if (userScore) {
-      html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">💡 以你的<strong>' + userScore + '分/strong> 为基准，点击省份展开专业分数线/p>';
+      html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">💡 以你的<strong>' + userScore + '分</strong> 为基准，点击省份展开专业分数线</p>';
     } else {
-      html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">💡 在首页输入你的分数，可查看各省份录取概率 | 点击省份展开专业分数线/p>';
+      html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">💡 在首页输入你的分数，可查看各省份录取概率 | 点击省份展开专业分数线</p>';
     }
 
     // ── 省份表格 ──
     html += '<div style="overflow-x:auto"><table class="emp-table" id="provTable"><thead><tr>';
-    html += '<th style="width:28px"></th><th>省份</th><th>校线</th><th>专业数/th><th>年份</th>';
+    html += '<th style="width:28px"></th><th>省份</th><th>校线</th><th>专业数</th><th>年份</th>';
     if (userScore) html += '<th>差距</th><th>评估</th>';
     html += '</tr></thead><tbody>';
 
@@ -435,7 +437,7 @@ async function loadProvinceMajorScores(uniId, containerId) {
           });
           html += '</div>';
         }
-        html += '<table class="emp-table prov-major-table" style="margin:0;font-size:0.82rem"><thead><tr><th>专业名称</th><th>科类</th><th>选科要求</th><th>最低分</th><th>最低位次/th><th>年份</th>';
+        html += '<table class="emp-table prov-major-table" style="margin:0;font-size:0.82rem"><thead><tr><th>专业名称</th><th>科类</th><th>选科要求</th><th>最低分</th><th>最低位次</th><th>年份</th>';
         if (userScore) html += '<th>差距</th><th>评估</th>';
         html += '</tr></thead><tbody>';
         for (const m of majors) {
@@ -598,9 +600,9 @@ function renderCompareSlots() {
     const item = compareList[i];
     if (item) {
       return `<div class="compare-slot filled">
-        <button class="slot-remove" onclick="removeCompare(${i})">✓/button>
+        <button class="slot-remove" onclick="removeCompare(${i})">✓</button>
         <div class="slot-name">${esc(item.name)}</div>
-        <div class="slot-score">${item.score}分/div>
+        <div class="slot-score">${item.score}分</div>
       </div>`;
     }
     return `<div class="compare-slot" onclick="pickForCompare(${i})">
@@ -617,7 +619,7 @@ async function pickForCompare(slot) {
     const r = await apiGet('/universities?q=' + encodeURIComponent(q) + '&limit=8');
     if (r.data.length === 0) { toast('未找到'); return; }
     const choice = r.data.length === 1 ? r.data[0] : r.data.find(u => u.cn === q) || r.data[0];
-    compareList[slot] = {id: choice.id, name: choice.cn, score: choice.gaokao_score};
+    compareList[slot] = {id: choice.id, name: choice.name, score: choice.gaokao_score};
     localStorage.setItem('unipulse_compare', JSON.stringify(compareList));
     renderCompareSlots();
   } catch(e) { toast('搜索失败'); }
@@ -671,17 +673,17 @@ async function loadProgramDetail(name) {
     $('programDetailContent').innerHTML = `
       <button class="btn btn-ghost btn-sm" onclick="navigate('programs')" style="margin-bottom:1rem">←返回专业列表</button>
       <h1>${d.icon} ${esc(d.name)}</h1>
-      <p style="color:var(--text2);margin:0.5rem 0 1rem">充${unis.length} 所高校开设此专业</p>
+      <p style="color:var(--text2);margin:0.5rem 0 1rem">共 ${unis.length} 所高校开设此专业</p>
       <div class="uni-grid">${unis.slice(0,20).map(uniName => {
-        const e = emp[cn];
+        const e = emp[uniName];
         if (e) {
           return `<div class="uni-card" data-page="uni-detail" data-id="${e.uni.id}">
-            <div class="uni-card-header"><div class="uni-card-name"></div><span class="uni-card-level ${getLevelClass(e.uni.level)}">${e.uni.level.split('/')[0]}</span></div>
+            <div class="uni-card-header"><div class="uni-card-name">${esc(uniName)}</div><span class="uni-card-level ${getLevelClass(e.uni.level)}">${e.uni.level.split('/')[0]}</span></div>
             <div class="uni-card-meta"><span>📍${e.uni.loc}</span><span>#${e.uni.rank}</span></div>
             ${e.programs.length > 0 ? `<div class="uni-card-stats">${e.programs.slice(0,2).map(p => `<span class="uni-stat">起薪 <strong>${formatSalary(p.salary_entry)}</strong></span>`).join('')}</div>` : ''}
           </div>`;
         }
-        return `<div class="uni-card"><div class="uni-card-name"></div></div>`;
+        return `<div class="uni-card"><div class="uni-card-name">${esc(uniName)}</div></div>`;
       }).join('')}</div>`;
   } catch(e) { toast('加载失败'); }
 }
@@ -849,7 +851,7 @@ async function loadPostDetail(id) {
             <span> · ${esc(p.author)}</span>
             <span> · ${timeAgo}</span>
             <span> · 👁 ${p.views}浏览</span>
-            <span> · 👍 ${p.likes}赞/span>
+            <span> · 👍 ${p.likes}赞</span>
           </div>
           <div class="post-tags" style="margin-bottom:1rem">${(p.tags||[]).map(t=>`<span class="post-tag">${esc(t)}</span>`).join('')}</div>
         </div>
@@ -865,7 +867,7 @@ async function loadPostDetail(id) {
         ${p.comments.map((c, i) => `
           <div class="comment-card">
             <div class="comment-header">
-              <span class="comment-floor">${i+1}楼/span>
+              <span class="comment-floor">${i+1}楼</span>
               <span class="comment-author">${esc(c.author)}</span>
               <span class="comment-time">${formatTimeAgo(c.created_at)}</span>
             </div>
@@ -959,11 +961,7 @@ async function submitAiReport(e) {
   if (!score || score < 300 || score > 750) { toast('请输入有效分数300-750)'); return; }
   userScore = score;
   localStorage.setItem('unipulse_score', score);
-  // 付费墙：免费3次，之后9.9元解锁
-  if (!Paywall.tryUse('ai-report', { price: '9.9', qrImg: '/static/img/donate-qr.png', desc: 'AI选校报告 & 冲稳保推荐 & 录取概率分析 & 分数线对比', freeLimit: 3, contactWx: 'a5050e' })) {
-    $('aiReportResult').classList.add('hidden');
-    return;
-  }
+  // AI选校报告完全免费
   const province = $('aiProvince').value;
   const interests = $('aiInterests').value;
   const subjects = $('aiSubjects').value;
@@ -1027,7 +1025,7 @@ async function loadFavorites() {
   try {
     const list = await apiGet('/favorites/' + sessionId);
     if (list.length === 0) {
-      $('favGrid').innerHTML = `<div class="empty-state"><div class="empty-icon">⭐/div><h3>暂无收藏</h3><p>浏览高校时点击⭐收藏</p><button class="btn btn-primary" data-page="universities">去浏览/button></div>`;
+      $('favGrid').innerHTML = `<div class="empty-state"><div class="empty-icon">⭐</div><h3>暂无收藏</h3><p>浏览高校时点击⭐收藏</p><button class="btn btn-primary" data-page="universities">去浏览</button></div>`;
     } else {
       $('favGrid').innerHTML = list.map(u => renderUniCard(u)).join('');
     }
@@ -1060,13 +1058,13 @@ function renderPagination(containerId, total, limit, current, onClick) {
   const pages = Math.ceil(total / limit);
   if (pages <= 1) { $(containerId).innerHTML = ''; return; }
   let html = '';
-  if (current > 1) html += `<button onclick="(${onClick})(${current-1})">上一页/button>`;
+  if (current > 1) html += `<button onclick="(${onClick})(${current-1})">上一页</button>`;
   const start = Math.max(1, current - 2);
   const end = Math.min(pages, current + 2);
   for (let i = start; i <= end; i++) {
     html += `<button class="${i===current?'active':''}" onclick="(${onClick})(${i})">${i}</button>`;
   }
-  if (current < pages) html += `<button onclick="(${onClick})(${current+1})">下一页/button>`;
+  if (current < pages) html += `<button onclick="(${onClick})(${current+1})">下一页</button>`;
   $(containerId).innerHTML = html;
 }
 
@@ -1191,6 +1189,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
+// ── 对比搜索器 ──
+function initCompareSearch() {
+  const input = $('compareSearchInput');
+  const dropdown = $('compareSearchDropdown');
+  if (!input || !dropdown) return;
+  let timer = null;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (!q) { dropdown.classList.add('hidden'); return; }
+    timer = setTimeout(async () => {
+      try {
+        const r = await apiGet('/universities?q=' + encodeURIComponent(q) + '&limit=8');
+        if (r.data.length === 0) {
+          dropdown.innerHTML = '<div class="compare-search-item" style="color:var(--text3)">未找到匹配院校</div>';
+        } else {
+          dropdown.innerHTML = r.data.map(u => `
+            <div class="compare-search-item" onclick="addCompareFromSearch(${u.id},'${esc(u.name)}',${u.gaokao_score})">
+              <span class="cs-name">${esc(u.name)}</span>
+              <span class="cs-meta">${u.loc} · ${u.level.split('/')[0]} · ${u.gaokao_score}分</span>
+            </div>`).join('');
+        }
+        dropdown.classList.remove('hidden');
+      } catch(e) { dropdown.classList.add('hidden'); }
+    }, 300);
+  });
+  document.addEventListener('click', e => {
+    if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.classList.add('hidden');
+    }
+  });
+}
+
+function addCompareFromSearch(id, name, score) {
+  if (compareList.length >= 5) { toast('最多对比5所'); return; }
+  if (compareList.some(c => c.id === id)) { toast('已在对比中'); return; }
+  compareList.push({id, name, score});
+  localStorage.setItem('unipulse_compare', JSON.stringify(compareList));
+  renderCompareSlots();
+  $('compareSearchInput').value = '';
+  $('compareSearchDropdown').classList.add('hidden');
+  toast('已加入对比');
+}
+
+// ── 骨架屏控制 ──
+function showUniGridSkeleton() {
+  const sk = $('uniGridSkeleton');
+  const grid = $('uniGrid');
+  if (sk) sk.style.display = 'grid';
+  if (grid) grid.innerHTML = '';
+}
+function hideUniGridSkeleton() {
+  const sk = $('uniGridSkeleton');
+  if (sk) sk.style.display = 'none';
+}
+
+// ── 冲稳保过滤 ──
+function setChanceFilter(filter) {
+  chanceFilter = filter;
+  loadUniversities(1);
+}
+
 // ══════════════════════════════════════
 // ── 志愿表功能──
 // ══════════════════════════════════════
@@ -1286,11 +1346,11 @@ async function loadWishTable() {
     if (!container) return;
     container.innerHTML = groups[g].map((w, i) => `
       <div class="wish-item" draggable="true" data-wish-id="${w.id}" data-wish-group="${g}" data-wish-idx="${i}">
-        <span class="wish-drag-handle" title="拖拽排序">★/span>
+        <span class="wish-drag-handle" title="拖拽排序">★</span>
         <span class="wish-item-order">${i+1}</span>
         <div class="wish-item-info">
           <div class="wish-item-name">${esc(w.name)}</div>
-          <div class="wish-item-meta">${w.score}分· ${g}综/div>
+          <div class="wish-item-meta">${w.score}分· ${g}综</div>
         </div>
         <div class="wish-item-btns">
           ${g!=='冲'?'<button class="btn btn-xs btn-ghost" onclick="moveWishGroup('+w.id+',\'冲\')" title="移到冲组">🎯</button>':''}
