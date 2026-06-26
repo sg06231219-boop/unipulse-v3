@@ -784,6 +784,9 @@ def list_universities(
         # Normalize employment_rate to percentage
         if d.get("employment_rate") and d["employment_rate"] <= 1:
             d["employment_rate"] = round(d["employment_rate"] * 100, 1)
+        # Fix description: replace '始于0年' with actual founded_year
+        if d.get("founded_year") and d["founded_year"] > 0 and d.get("description"):
+            d["description"] = d["description"].replace("始建于0年", f"始建于{d['founded_year']}年")
         # Don't include province_scores in list view (too large)
         d.pop("province_scores", None)
         result.append(d)
@@ -816,6 +819,10 @@ def get_university(uni_id: int):
         if isinstance(univs, list) and d["cn"] in univs:
             d["program_categories"].append({"name":p["name"],"icon":p["icon"]})
     conn.close()
+    # Fix description: replace '始建于0年' with actual founded_year
+    if d.get("founded_year") and d["founded_year"] > 0:
+        d["description"] = d["description"].replace("始建于0年", f"始建于{d['founded_year']}年")
+        d["description"] = d["description"].replace("始建于0 ", f"始建于{d['founded_year']}年 ")
     return d
 
 @app.get("/api/programs")
