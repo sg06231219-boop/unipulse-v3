@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, hmac, re, sqlite3, datetime, random, secrets, threading, uuid
 
-app = FastAPI(title="UniPulse v3", version="4.1.0")
+app = FastAPI(title="UniPulse v3", version="4.3.0")
 
 # CORS — 收窄为同源+已知域名
 _ORIGINS = [
@@ -78,7 +78,7 @@ def _backup_to_seed_json():
         uni_list = [dict(u) for u in unis]
         seed_data = {
             "universities": uni_list,
-            "version": "4.1.0", "updated_at": datetime.datetime.now().isoformat(),
+            "version": "4.3.0", "updated_at": datetime.datetime.now().isoformat(),
         }
         backup_path = os.path.join(DATA_DIR, "seed_backup.json")
         content = json.dumps(seed_data, ensure_ascii=False)
@@ -102,7 +102,7 @@ def perform_data_update():
             updates = []
             if random.random() < 0.3:
                 delta = round(random.uniform(-0.005, 0.008), 3)
-                new_rate = max(0.60, min(1.0, (u["employment_rate"] or 0.85) + delta))
+                new_rate = max(60.0, min(100.0, (u["employment_rate"] or 92.0) + delta * 100))
                 updates.append(("employment_rate", new_rate))
             if random.random() < 0.2:
                 delta = int(random.uniform(-500, 800))
@@ -153,6 +153,9 @@ _update_thread.start()
 _LAST_AUTO_UPDATE = time.time() - _AUTO_UPDATE_INTERVAL + 900  # 15分钟后首次更新
 
 def init_db():
+    # Force recreate DB with updated seed data on startup
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
     conn = get_db()
     c = conn.cursor()
     c.executescript("""
@@ -338,19 +341,21 @@ def init_db():
                  u.get("logo",""),u["initials"],
                  u.get("score",0),u["trend"],u["trendV"],u["stars"],u["reviews"],u["rank"],
                  u["level"],u["type"],
-                 details.get("description",u.get("description","")),
+                 details.get("description") or u.get("description",""),
                  u["gaokao_score"],u["tuition"],
                  u["employment_rate"],u["avg_salary"],
                  json.dumps(details.get("metrics",u.get("metrics",{})),ensure_ascii=False),
                  json.dumps(details.get("tags",u.get("tags",[])),ensure_ascii=False),
                  json.dumps(ps,ensure_ascii=False),
-                 details.get("address",u.get("address","")),details.get("phone",u.get("phone","")),details.get("website",u.get("website","")),details.get("founded_year",u.get("founded_year",0)),
+                 details.get("address") or u.get("address",""),details.get("phone") or u.get("phone",""),details.get("website") or u.get("website",""),details.get("founded_year") or u.get("founded_year",0),
                  str(details.get("campus_area",u.get("campus_area",""))),str(details.get("student_count",u.get("student_count",""))),str(details.get("faculty_count",u.get("faculty_count",""))),
                  details.get("doctoral_programs",u.get("doctoral_programs",0)),details.get("master_programs",u.get("master_programs",0)),details.get("national_key_programs",u.get("national_key_programs",0)),
                  details.get("postdoc_stations",u.get("postdoc_stations",0)),details.get("academicians",u.get("academicians",0)),
-                 details.get("dormitory",u.get("dormitory","")),details.get("canteen",u.get("canteen","")),details.get("campus_life",u.get("campus_life","")),
-                 json.dumps(details.get("notable_alumni",u.get("notable_alumni",[])),ensure_ascii=False),
-                 details.get("motto",u.get("motto","")),details.get("school_nature",u.get("school_nature","")),details.get("affiliation",u.get("affiliation",""))))
+                 details.get("dormitory") or u.get("dormitory",""),details.get("canteen") or u.get("canteen",""),details.get("campus_life") or u.get("campus_life",""),
+                 # notable_alumni in seed is already a JSON string; don't re-encode
+                 (details.get("notable_alumni") or u.get("notable_alumni") or "[]") if isinstance(details.get("notable_alumni") or u.get("notable_alumni",""), str) and (details.get("notable_alumni") or u.get("notable_alumni","")).startswith('[') else json.dumps(details.get("notable_alumni") or u.get("notable_alumni",[]), ensure_ascii=False),
+                 # Use or to avoid empty-details overriding real seed value
+                 details.get("motto") or u.get("motto",""),details.get("school_nature") or u.get("school_nature",""),details.get("affiliation") or u.get("affiliation","")))
 
         for p in PROGRAMS:
             c.execute("INSERT OR REPLACE INTO programs (name,icon,univs) VALUES (?,?,?)",
@@ -422,6 +427,70 @@ try:
     conn.close()
 except Exception as e:
     print(f"[v4.1.0] gaokao_score fix error: {e}")
+
+# v4.2.1: Hardcoded forum seed (HF Space lacks seed.json, seed_slim has empty forum_posts)
+_FORUM_SEED = [
+    (1,"2026高考志愿填报指坍?冲稳保三档怎么选？","志愿填报","高考老兵","<p>2026年高考已经结束，同学们即将面临志愿填报的关键时刻。所谓的\"冲稳保\"策略是指在志愿填报时，按照\"冲刺\"、\"稳妥\"、\"保底\"三个档次来分配志愿。</p><p><strong>冲：</strong>选择往年录取分数线比你的分数高5-15分的院校。这类院校你录取的可能性较低，但并非完全没有机会，特别是对于招生人数较多的院校和专业。</p><p><strong>稳：</strong>选择往年录取分数线与你的分数相当的院校（上下5分以内）。这是你最可能被录取的档次，应该重点关注的区间。</p><p><strong>保：</strong>选择往年录取分数线比你的分数低10-20分的院校。确保你至少有一个学校可以上，避免滑档到下一批次。</p><p>对于平行志愿省份，建议冲2-3所，稳3-4所，保1-2所。祝大家金榜题名！</p>",1280,42,'[\"志愿填报\",\"冲稳保\",\"高考\"]','2026-06-14T08:00:00',0),
+    (2,"计算机专业和软件工程有什么区别？","专业解析","IT老兵","<p>很多学弟学妹问我这个问题，我来系统回答一下：</p><p><strong>计算机科学与技术：</strong>偏重于理论基础，包括算法、数据结构、操作系统、编译原理、人工智能等。培养方向更偏向研究型人才，适合考研深造。</p><p><strong>软件工程：</strong>偏重于工程实践，包括需求分析、软件设计、项目管理、测试等。培养方向更偏向工程型人才，适合直接就业。</p><p>两者的核心课程有大量重叠（编程语言、数据结构、数据库等），区别在于侧重点不同。就业前景都相当不错，计算机可能在算法岗更有优势，软件工程在项目管理和架构设计上更有优势。</p><p>简单总结：想做科研选计算机，想直接出来工作选软件工程。</p>",960,38,'[\"专业解析\",\"计算机\",\"软件工程\"]','2026-06-14T09:00:00',0),
+    (3,"985和211在2026年还重要吗？","院校选择","考研人","<p>这是个老生常谈的问题。直接说结论：<strong>依然重要，但没以前那么重要了。</strong></p><p>985/211的优势：</p><ul><li>校招优势：大厂、国企、央企在校招时会优先去985/211</li><li>校友资源：名校的校友网络更强大</li><li>保研比例：985高校保研率可达30%以上</li><li>选调生资格：部分省份定向选调仅限985/211</li></ul><p>但近年来变化很大：</p><ul><li>企业越来越重视实际能力和项目经验</li><li>双一流建设取代了原来的985/211标签</li><li>新兴行业的头部公司更看重技术栈匹配度</li></ul><p>我的建议：能上985/211当然更好，但上不了也不必灰心。大学四年你的努力比学校的牌子重要得多。</p>",2340,56,'[\"院校选择\",\"985\",\"211\",\"就业\"]','2026-06-14T10:00:00',0),
+    (4,"学长经验：我是怎么选到心仪大学的","经验分享","大二学长","<p>去年这个时候我也和你们一样迷茫。分享一下我的心路历程：</p><p><strong>第一步：明确自己想要的。</strong>我是计算机方向的，所以大学必须有不错的工科实力。同时我想去大城市发展，所以优先考虑一线城市和新一线城市的高校。</p><p><strong>第二步：用数据说话。</strong>我用当时的志愿填报工具查了目标院校近三年的录取分数和位次，对照自己的省排名，筛选出了15所目标院校。</p><p><strong>第三步：深入了解。</strong>不只是看排名和分数线，我去知乎、贴吧看了学长学姐的真实评价，看了宿舍条件、食堂、社团活动等。</p><p><strong>第四步：合理分配冲稳保。</strong>我的分数在本省排名约前8%，最终选了2所冲的985、3所稳的211、2所保的省重点。最后被第二志愿（稳的211）录取了。</p><p>小提醒：<strong>服从调剂</strong>很重要！除非你有绝对把握，否则建议勾上。</p>",1870,32,'[\"经验分享\",\"城市选择\",\"专业选择\"]','2026-06-14T11:00:00',0),
+    (5,"电气工程及其自动化值得学吗？就业前景如何","专业解析","电气老学长","<p>电气工程及其自动化是工科中的常青树专业，值得学！</p><p><strong>就业方向：</strong></p><ul><li>国家电网/南方电网：这是电气专业最对口的方向，待遇优厚，但竞争激烈</li><li>发电集团：华能、大唐、国电投等，工作和生活比较稳定</li><li>电气设备制造：施耐德、ABB、正泰等，偏技术和研发</li><li>新能源汽车：比亚迪、特斯拉等，近年来是热门方向</li><li>轨道交通、建筑电气等其他方向</li></ul><p><strong>薪资水平：</strong>国家电网本科生起薪约8-12万/年（看地区），私企在12-20万/年。</p><p><strong>建议：</strong>如果你对物理和数学不排斥，动手能力强，喜欢稳定的工作，电气是个好选择。但如果想挣快钱，可能计算机类更适合。</p><p>另外提醒：电气专业的课程比较硬核，模电、电机学、电力系统分析都不容易，要做好心理准备。</p>",1560,29,'[\"专业解析\",\"电气工程\",\"就业前景\"]','2026-06-14T12:00:00',0),
+    (6,"文科生能报哪些好就业的专业？","专业解析","文科小白","<p>文科生常被说\"就业难\"，但其实选对专业一样有很好的发展！</p><p><strong>推荐专业：</strong></p><ul><li><strong>法学：</strong>考公大户，也可进入律所、企业法务。但需要考法考，有一定难度</li><li><strong>金融/经济学：</strong>银行、证券、保险等行业，文科生可报经济/金融类（部分院校文理兼收）</li><li><strong>会计/审计：</strong>需求量大，公务员和私企都有岗位，积累经验后薪资可观</li><li><strong>汉语言文学：</strong>教师、编辑、公务员、新媒体运营等方向</li><li><strong>新闻传播/网络与新媒体：</strong>新媒体时代需求旺盛，适合创意型人才</li><li><strong>英语/小语种：</strong>外贸、翻译、教育、跨境电商等</li><li><strong>教育学/心理学：</strong>教师编制或心理咨询方向</li></ul><p><strong>不推荐的：</strong>纯文科的历史学、哲学、考古学等（除非你能保研或考公）</p><p>文科生的核心出路：<strong>考公+考研+技能傍身</strong>。大学期间多学一些实用技能（数据分析、新媒体运营、设计等），会比纯文科背景更有竞争力。</p>",1980,45,'[\"专业解析\",\"文科\",\"就业\"]','2026-06-14T13:00:00',0),
+    (7,"二三本院校值得读吗？还是复读？","志愿填报","过来人","<p>这个问题每年都有很多人纠结。我先说结论：<strong>能走一个好专业，就值得读；如果对学校和专业都不满意，才考虑复读。</strong></p><p><strong>该去读的情况：</strong></p><ul><li>能选到一个就业前景不错的专业（计算机、会计、护理等）</li><li>你有明确的职业规划，大学期间可以考证、实习来弥补学校劣势</li><li>经济条件有限，不想多花一年时间复读</li><li>你已经尽力了，复读提分空间有限</li></ul><p><strong>考虑复读的情况：</strong></p><ul><li>考试发挥失常，与平时成绩差距在50分以上</li><li>只能去非常普通的院校且专业也不理想</li><li>有强烈的名校情结，愿意再拼一年</li></ul><p>另外提醒：如果你去了二三本，大学四年可以通过考研实现逆袭。很多双一流高校的研究生对二本院校是开放欢迎态度的。</p><p>最后说一句：人生的路很长，高考只是其中一站。无论你选择哪条路，都全力以赴就好。</p>",3100,68,'[\"志愿填报\",\"复读\",\"专升本\"]','2026-06-14T14:00:00',0),
+    (8,"各分数段2026高考志愿填报参考","志愿填报","数据控","<p>根据往年数据和2026年高考难度预测，我整理了各分数段的志愿填报建议：</p><p><strong>650分以上（全省前1%）：</strong></p><ul><li>可以冲清华、北大、复旦、上交等顶尖985</li><li>稳：浙大、南大、中科大、武大、华科</li><li>保：西交、哈工大、南开、同济</li></ul><p><strong>600-650分（全省前5%）：</strong></p><ul><li>冲：武大、华科、西交</li><li>稳：川大、山大、中南、东南</li><li>保：湖南大学、大连理工、重庆大学</li></ul><p><strong>550-600分（全省前15%）：</strong></p><ul><li>冲：兰大、东北大学、西南交大</li><li>稳：郑州大学、南昌大学、合肥工大</li><li>保：省属重点大学</li></ul><p><strong>500-550分（全省前30%）：</strong></p><ul><li>冲：省属重点大学</li><li>稳：省属普通一本</li><li>保：二本院校的好专业</li></ul><p><strong>500分以下：</strong></p><ul><li>优先选好专业（计算机、护理、会计等），学校次之</li><li>适合冲刺的省份：甘肃、新疆、西藏的高校分数线较低</li></ul><p>以上数据仅供参考，实际情况请以各省招生考试院公布的数据为准。</p>",4200,89,'[\"志愿填报\",\"分数段\",\"高考\"]','2026-06-14T15:00:00',0),
+]
+_FORUM_COMMENTS_SEED = [
+    (1,1,"李同学","太实用了，收藏了！",5,'2026-06-14T08:30:00'),
+    (2,1,"张同学","请问稳的学校要不要选比自己分低5分以内的？",3,'2026-06-14T09:15:00'),
+    (3,3,"职场新人","同意，我们公司今年校招基本不看学校了，看实习和项目经验。",8,'2026-06-14T10:30:00'),
+    (4,3,"HR张姐","作为HR说一句：985/211简历肯定优先看，但最终录取看面试表现。技术岗尤其看项目经历。",12,'2026-06-14T11:45:00'),
+    (5,8,"高三党","先收藏，明年用。感谢大佬整理！",6,'2026-06-14T15:30:00'),
+    (6,8,"四川考生","补充一下：还要看省排名位次，同分数在不同省份含金量差很多的！",9,'2026-06-14T16:00:00'),
+]
+try:
+    conn = get_db()
+    post_count = conn.execute("SELECT COUNT(*) FROM forum_posts").fetchone()[0]
+    if post_count == 0:
+        for p in _FORUM_SEED:
+            conn.execute("""INSERT OR IGNORE INTO forum_posts (id,title,category,author,content,views,likes,tags,created_at,is_pinned)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""", p)
+        for c in _FORUM_COMMENTS_SEED:
+            conn.execute("""INSERT OR IGNORE INTO forum_comments (id,post_id,author,text,likes,created_at)
+                VALUES (?,?,?,?,?,?)""", c)
+        conn.commit()
+        print(f"[v4.2.1] Seeded {len(_FORUM_SEED)} forum posts + {len(_FORUM_COMMENTS_SEED)} comments")
+    conn.close()
+except Exception as e:
+    print(f"[v4.2.1] Forum seed error: {e}")
+
+# Fix empty region for universities (patch HK etc.)
+try:
+    conn = get_db()
+    empty = conn.execute("SELECT id, loc FROM universities WHERE region='' OR region IS NULL").fetchall()
+    if empty:
+        for r in empty:
+            loc = r["loc"] or ""
+            if "香港" in loc or "澳门" in loc or "台湾" in loc:
+                conn.execute("UPDATE universities SET region='港澳台' WHERE id=?", (r["id"],))
+            elif any(p in loc for p in ["北京","天津","河北","山西","内蒙古"]):
+                conn.execute("UPDATE universities SET region='华北' WHERE id=?", (r["id"],))
+            elif any(p in loc for p in ["上海","江苏","浙江","安徽","福建","江西","山东"]):
+                conn.execute("UPDATE universities SET region='华东' WHERE id=?", (r["id"],))
+            elif any(p in loc for p in ["河南","湖北","湖南"]):
+                conn.execute("UPDATE universities SET region='华中' WHERE id=?", (r["id"],))
+            elif any(p in loc for p in ["广东","广西","海南"]):
+                conn.execute("UPDATE universities SET region='华南' WHERE id=?", (r["id"],))
+            elif any(p in loc for p in ["重庆","四川","贵州","云南","西藏"]):
+                conn.execute("UPDATE universities SET region='西南' WHERE id=?", (r["id"],))
+            elif any(p in loc for p in ["陕西","甘肃","青海","宁夏","新疆"]):
+                conn.execute("UPDATE universities SET region='西北' WHERE id=?", (r["id"],))
+            elif any(p in loc for p in ["辽宁","吉林","黑龙江"]):
+                conn.execute("UPDATE universities SET region='东北' WHERE id=?", (r["id"],))
+        conn.commit()
+        print(f"[v4.2.1] Fixed region for {len(empty)} universities")
+    conn.close()
+except Exception as e:
+    print(f"[v4.2.1] Region fix error: {e}")
 
 # Ensure province_scores column exists (for existing DBs)
 try:
@@ -617,7 +686,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"4.1.0","service":"UniPulse"}
+    return {"status":"ok","version":"4.3.0","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
@@ -1231,8 +1300,18 @@ def admission_chance(score: int, uni_id: Optional[int] = None, region: Optional[
 
 @app.post("/api/compare")
 @app.get("/api/compare")
-def compare_univers(ids: list[int] = Query([])):
-    """院校对比：多校指标并列展示"""
+async def compare_univers(request: Request, ids: list[int] = Query([])):
+    """院校对比：多校指标并列展示（支持GET query和POST body两种方式）"""
+    # POST body: [1,2,3] 或 {"ids":[1,2,3]}
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            if isinstance(body, list):
+                ids = body
+            elif isinstance(body, dict) and "ids" in body:
+                ids = body["ids"]
+        except Exception:
+            pass
     conn = get_db()
     result = []
     for uid in ids[:5]:
@@ -1282,7 +1361,7 @@ def admin_stats(auth: bool = Depends(verify_admin)):
 @app.get("/api/university/search")
 def search_universities_api(q: str = Query("", max_length=100), limit: int = Query(10, le=50)):
     conn = get_db()
-    rows = conn.execute("SELECT id,name,cn,loc,level,type,gaokao_score FROM universities WHERE name LIKE ? OR cn LIKE ? ORDER BY rank ASC LIMIT ?", (f"%{q}%",f"%{q}%",limit)).fetchall()
+    rows = conn.execute("SELECT id,name,cn,loc,level,type,gaokao_score,initials,score,stars,logo,reviews,region,tuition,employment_rate,avg_salary FROM universities WHERE name LIKE ? OR cn LIKE ? ORDER BY rank ASC LIMIT ?", (f"%{q}%",f"%{q}%",limit)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
