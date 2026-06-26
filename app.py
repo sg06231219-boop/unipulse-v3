@@ -260,12 +260,22 @@ def init_db():
 
     # Seed if empty
     if c.execute("SELECT COUNT(*) FROM universities").fetchone()[0] == 0:
-        # Load from JSON instead of Python module (faster, less memory)
+        # Load from JSON (supports gzip compressed format)
+        seed_data = None
+        # Try gzip compressed first (much smaller, faster to transfer)
+        seed_gz_path = os.path.join(os.path.dirname(__file__), "seed_slim.json.gz")
         seed_path = os.path.join(DATA_DIR, "seed_backup.json")
         if not os.path.exists(seed_path):
             seed_path = os.path.join(os.path.dirname(__file__), "seed.json")
-        seed_data = None
-        if os.path.exists(seed_path):
+        if os.path.exists(seed_gz_path):
+            import gzip
+            with gzip.open(seed_gz_path, "rt", encoding="utf-8") as f:
+                seed_data = json.load(f)
+            UNIVERSITIES = seed_data.get("universities", [])
+            PROGRAMS = seed_data.get("programs", [])
+            FORUM_POSTS = seed_data.get("forum_posts", [])
+            FORUM_COMMENTS = seed_data.get("forum_comments", [])
+        elif os.path.exists(seed_path):
             with open(seed_path, "r", encoding="utf-8") as f:
                 seed_data = json.load(f)
             UNIVERSITIES = seed_data.get("universities", [])
@@ -1422,12 +1432,15 @@ def get_province_scores(uni_id: int):
         if isinstance(first_val, list):
             has_real_data = True
         elif isinstance(first_val, dict):
-            # New format: province → {type, batch, min_score, ...}
+            # New format: province → {type, batch, min_score, ..., majors: [...]}
             base_scores = {}
+            major_scores = {}
             for prov, info in province_scores.items():
                 if isinstance(info, dict):
                     base_scores[prov] = info.get("min_score", 0)
-            return {"uni_id": uni_id, "uni_name": uni_name, "base_scores": base_scores, "major_scores": {}}
+                    if info.get("majors"):
+                        major_scores[prov] = info["majors"]
+            return {"uni_id": uni_id, "uni_name": uni_name, "base_scores": base_scores, "major_scores": major_scores}
 
     # If we have real data, return it directly in the format the frontend expects
     if has_real_data:
