@@ -346,17 +346,89 @@ function switchDetailTab(tab, btn) {
 }
 
 function renderProvinceScores(u) {
-  // Return placeholder, then async load major-specific scores
+  // Directly render from inline data (no async needed)
+  const ps = u.province_scores || {};
   const containerId = 'provScoresContainer';
-  setTimeout(() => loadProvinceMajorScores(u.id, containerId), 100);
-  return '<div id="' + containerId + '" style="margin-top:0.5rem">' +
-    '<p style="color:var(--text3)">加载分数线数据中...</p>' +
-    '</div>';
+  // Check if province_scores is in dict format (new) or old format
+  const firstVal = Object.values(ps)[0];
+  const isDictFormat = firstVal && typeof firstVal === 'object' && !Array.isArray(firstVal);
+  
+  // Build base_scores from province_scores
+  let baseScores = {};
+  if (isDictFormat) {
+    for (const [prov, info] of Object.entries(ps)) {
+      if (info && info.min_score) baseScores[prov] = info.min_score;
+    }
+  } else {
+    for (const [prov, score] of Object.entries(ps)) {
+      if (typeof score === 'number') baseScores[prov] = score;
+    }
+  }
+  
+  const provinces = Object.keys(baseScores).sort();
+  
+  // Also try async load for major-specific data
+  setTimeout(() => loadProvinceMajorScores(u.id, containerId, baseScores), 100);
+  
+  if (provinces.length === 0) {
+    return '<div id="' + containerId + '" style="margin-top:0.5rem"><p style="color:var(--text3)">暂无省分数线数据</p></div>';
+  }
+  
+  let html = '<div id="' + containerId + '" style="margin-top:0.5rem">';
+  // Filter bar
+  html += '<div class="prov-filter-bar" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.8rem">';
+  html += '<input id="provSearch" type="text" placeholder="搜索省份..." style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 10px;color:var(--text1);font-size:0.85rem;width:140px;outline:none" oninput="filterProvRows()">';
+  html += '<select id="provTypeFilter" onchange="filterProvRows()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 8px;color:var(--text1);font-size:0.85rem;outline:none"><option value="all">全部科类</option><option value="综合">综合</option><option value="理科">理科</option><option value="文科">文科</option></select>';
+  html += '<select id="provSortBy" onchange="filterProvRows()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 8px;color:var(--text1);font-size:0.85rem;outline:none"><option value="name">按省份</option><option value="score-asc">分数低\u2192高</option><option value="score-desc">分数高\u2192低</option>';
+  if (userScore) html += '<option value="gap-desc">差距大\u2192小</option>';
+  html += '</select>';
+  html += '<span id="provCount" style="color:var(--text3);font-size:0.82rem;margin-left:auto">' + provinces.length + '\u4e2a\u7701\u4efd</span>';
+  html += '</div>';
+  // User score hint
+  if (userScore) {
+    html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">\ud83d\udca1 \u4ee5\u4f60\u7684<strong>' + userScore + '\u5206</strong> \u4e3a\u57fa\u51c6</p>';
+  } else {
+    html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">\ud83d\udca1 \u5728\u9996\u9875\u8f93\u5165\u4f60\u7684\u5206\u6570\uff0c\u53ef\u67e5\u770b\u5404\u7701\u4efd\u5f55\u53d6\u6982\u7387</p>';
+  }
+  // Table
+  html += '<div style="overflow-x:auto"><table class="emp-table" id="provTable"><thead><tr>';
+  html += '<th>\u7701\u4efd</th><th>\u6821\u7ebf</th><th>\u5e74\u4efd</th>';
+  if (userScore) html += '<th>\u5dee\u8ddd</th><th>\u8bc4\u4f30</th>';
+  html += '</tr></thead><tbody>';
+  for (const prov of provinces) {
+    const base = baseScores[prov];
+    const gap = userScore ? userScore - base : null;
+    const chance = gap !== null ? getChanceInfo(gap) : null;
+    const info = isDictFormat ? ps[prov] : {};
+    const year = info.year || 2025;
+    html += '<tr class="prov-row" data-prov="' + esc(prov) + '" data-score="' + base + '">';
+    html += '<td>' + esc(prov) + '</td>';
+    html += '<td><strong>' + base + '</strong></td>';
+    html += '<td style="font-size:0.78rem;color:var(--text3)">' + year + '</td>';
+    if (userScore) {
+      html += '<td style="color:' + (gap >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (gap >= 0 ? '+' : '') + gap + '</td>';
+      html += '<td><span class="uni-card-chance ' + (chance ? chance.cls : '') + '">' + (chance ? chance.text : '-') + '</span></td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table></div></div>';
+  return html;
 }
 
-async function loadProvinceMajorScores(uniId, containerId) {
+async function loadProvinceMajorScores(uniId, containerId, preloadedBaseScores) {
   const el = document.getElementById(containerId);
   if (!el) return;
+  // If we already have base scores from inline data, just try to load major scores
+  if (preloadedBaseScores && Object.keys(preloadedBaseScores).length > 0) {
+    try {
+      const data = await apiGet('/universities/' + uniId + '/province-scores');
+      const majorScores = data.major_scores || {};
+      if (Object.keys(majorScores).length > 0) {
+        // TODO: enhance display with major scores if available
+      }
+    } catch(e) {}
+    return; // Already rendered inline, no need to re-render
+  }
   try {
     const data = await apiGet('/universities/' + uniId + '/province-scores');
     const baseScores = data.base_scores || {};
