@@ -346,18 +346,23 @@ function switchDetailTab(tab, btn) {
 }
 
 function renderProvinceScores(u) {
-  // Directly render from inline data (no async needed)
+  // Directly render from inline data with full major scores (no async needed)
   const ps = u.province_scores || {};
   const containerId = 'provScoresContainer';
-  // Check if province_scores is in dict format (new) or old format
   const firstVal = Object.values(ps)[0];
   const isDictFormat = firstVal && typeof firstVal === 'object' && !Array.isArray(firstVal);
   
-  // Build base_scores from province_scores
+  // Build base_scores and extract major_scores from inline data
   let baseScores = {};
+  let majorScores = {};
   if (isDictFormat) {
     for (const [prov, info] of Object.entries(ps)) {
-      if (info && info.min_score) baseScores[prov] = info.min_score;
+      if (info && info.min_score) {
+        baseScores[prov] = info.min_score;
+        if (info.majors && Array.isArray(info.majors) && info.majors.length > 0) {
+          majorScores[prov] = info.majors;
+        }
+      }
     }
   } else {
     for (const [prov, score] of Object.entries(ps)) {
@@ -366,33 +371,31 @@ function renderProvinceScores(u) {
   }
   
   const provinces = Object.keys(baseScores).sort();
-  
-  // Also try async load for major-specific data
-  setTimeout(() => loadProvinceMajorScores(u.id, containerId, baseScores), 100);
+  const totalMajors = Object.values(majorScores).reduce((a, b) => a + b.length, 0);
   
   if (provinces.length === 0) {
-    return '<div id="' + containerId + '" style="margin-top:0.5rem"><p style="color:var(--text3)">暂无省分数线数据</p></div>';
+    return '<div id="' + containerId + '" style="margin-top:0.5rem"><p style="color:var(--text3)\">\u6682\u65e0\u7701\u5206\u6570\u7ebf\u6570\u636e</p></div>';
   }
   
   let html = '<div id="' + containerId + '" style="margin-top:0.5rem">';
   // Filter bar
   html += '<div class="prov-filter-bar" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.8rem">';
-  html += '<input id="provSearch" type="text" placeholder="搜索省份..." style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 10px;color:var(--text1);font-size:0.85rem;width:140px;outline:none" oninput="filterProvRows()">';
-  html += '<select id="provTypeFilter" onchange="filterProvRows()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 8px;color:var(--text1);font-size:0.85rem;outline:none"><option value="all">全部科类</option><option value="综合">综合</option><option value="理科">理科</option><option value="文科">文科</option></select>';
-  html += '<select id="provSortBy" onchange="filterProvRows()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 8px;color:var(--text1);font-size:0.85rem;outline:none"><option value="name">按省份</option><option value="score-asc">分数低\u2192高</option><option value="score-desc">分数高\u2192低</option>';
-  if (userScore) html += '<option value="gap-desc">差距大\u2192小</option>';
+  html += '<input id="provSearch" type="text" placeholder="\u641c\u7d22\u7701\u4efd..." style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 10px;color:var(--text1);font-size:0.85rem;width:140px;outline:none" oninput="filterProvRows()">';
+  html += '<select id="provTypeFilter" onchange="filterProvRows()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 8px;color:var(--text1);font-size:0.85rem;outline:none"><option value="all">\u5168\u90e8\u79d1\u7c7b</option><option value="\u7efc\u5408">\u7efc\u5408</option><option value="\u7406\u79d1">\u7406\u79d1</option><option value="\u6587\u79d1">\u6587\u79d1</option></select>';
+  html += '<select id="provSortBy" onchange="filterProvRows()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 8px;color:var(--text1);font-size:0.85rem;outline:none"><option value="name">\u6309\u7701\u4efd</option><option value="score-asc">\u5206\u6570\u4f4e\u2192\u9ad8</option><option value="score-desc">\u5206\u6570\u9ad8\u2192\u4f4e</option>';
+  if (userScore) html += '<option value="gap-desc">\u5dee\u8ddd\u5927\u2192\u5c0f</option>';
   html += '</select>';
-  html += '<span id="provCount" style="color:var(--text3);font-size:0.82rem;margin-left:auto">' + provinces.length + '\u4e2a\u7701\u4efd</span>';
+  html += '<span id="provCount" style="color:var(--text3);font-size:0.82rem;margin-left:auto">' + provinces.length + '\u4e2a\u7701\u4efd\u00b7' + totalMajors + '\u6761\u4e13\u4e1a\u5206\u6570\u7ebf</span>';
   html += '</div>';
   // User score hint
   if (userScore) {
-    html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">\ud83d\udca1 \u4ee5\u4f60\u7684<strong>' + userScore + '\u5206</strong> \u4e3a\u57fa\u51c6</p>';
+    html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">\ud83d\udca1 \u4ee5\u4f60\u7684<strong>' + userScore + '\u5206</strong> \u4e3a\u57fa\u51c6\uff0c\u70b9\u51fb\u7701\u4efd\u5c55\u5f00\u4e13\u4e1a\u5206\u6570\u7ebf</p>';
   } else {
-    html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">\ud83d\udca1 \u5728\u9996\u9875\u8f93\u5165\u4f60\u7684\u5206\u6570\uff0c\u53ef\u67e5\u770b\u5404\u7701\u4efd\u5f55\u53d6\u6982\u7387</p>';
+    html += '<p style="color:var(--text2);margin-bottom:0.6rem;font-size:0.85rem">\ud83d\udca1 \u5728\u9996\u9875\u8f93\u5165\u4f60\u7684\u5206\u6570\uff0c\u53ef\u67e5\u770b\u5404\u7701\u4efd\u5f55\u53d6\u6982\u7387 | \u70b9\u51fb\u7701\u4efd\u5c55\u5f00\u4e13\u4e1a\u5206\u6570\u7ebf</p>';
   }
   // Table
   html += '<div style="overflow-x:auto"><table class="emp-table" id="provTable"><thead><tr>';
-  html += '<th>\u7701\u4efd</th><th>\u6821\u7ebf</th><th>\u5e74\u4efd</th>';
+  html += '<th style="width:28px"></th><th>\u7701\u4efd</th><th>\u6821\u7ebf</th><th>\u4e13\u4e1a\u6570</th><th>\u5e74\u4efd</th>';
   if (userScore) html += '<th>\u5dee\u8ddd</th><th>\u8bc4\u4f30</th>';
   html += '</tr></thead><tbody>';
   for (const prov of provinces) {
@@ -401,15 +404,71 @@ function renderProvinceScores(u) {
     const chance = gap !== null ? getChanceInfo(gap) : null;
     const info = isDictFormat ? ps[prov] : {};
     const year = info.year || 2025;
-    html += '<tr class="prov-row" data-prov="' + esc(prov) + '" data-score="' + base + '">';
+    const majors = majorScores[prov] || [];
+    const hasMajors = majors.length > 0;
+    const rowId = 'prov_' + prov.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '');
+    // \u7edf\u8ba1\u5404\u79d1\u7c7b\u4e13\u4e1a\u6570
+    const keleCounts = {};
+    majors.forEach(m => { const t = m.type || '综合'; keleCounts[t] = (keleCounts[t] || 0) + 1; });
+    const keleSummary = Object.entries(keleCounts).map(([k, v]) => k + v).join(' ');
+    
+    html += '<tr class="prov-row" data-prov="' + esc(prov) + '" data-score="' + base + '" data-types="' + Object.keys(keleCounts).join(',') + '" style="cursor:pointer" onclick="toggleProvMajors(\'' + rowId + '\')">';
+    html += '<td style="text-align:center">' + (hasMajors ? '\u25aa' : '') + '</td>';
     html += '<td>' + esc(prov) + '</td>';
     html += '<td><strong>' + base + '</strong></td>';
+    html += '<td style="font-size:0.82rem;color:var(--text3)">' + majors.length + (keleSummary ? ' <span style="font-size:0.75rem">(' + keleSummary + ')</span>' : '') + '</td>';
     html += '<td style="font-size:0.78rem;color:var(--text3)">' + year + '</td>';
     if (userScore) {
       html += '<td style="color:' + (gap >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (gap >= 0 ? '+' : '') + gap + '</td>';
       html += '<td><span class="uni-card-chance ' + (chance ? chance.cls : '') + '">' + (chance ? chance.text : '-') + '</span></td>';
     }
     html += '</tr>';
+    // \u4e13\u4e1a\u8be6\u60c5\u884c\uff08\u9ed8\u8ba4\u6536\u8d77\uff09
+    if (hasMajors) {
+      html += '<tr id="' + rowId + '" class="prov-detail-row" style="display:none"><td colspan="' + (userScore ? 8 : 6) + '" style="padding:0">';
+      html += '<div style="padding:0.6rem 0.8rem;background:rgba(255,255,255,0.02)">';
+      // \u79d1\u7c7b\u6807\u7b7e\u5207\u6362
+      const types = Object.keys(keleCounts);
+      if (types.length > 1) {
+        html += '<div style="display:flex;gap:0.4rem;margin-bottom:0.5rem">';
+        html += '<button class="prov-kele-btn active" data-rowid="' + rowId + '" data-type="all" onclick="filterMajors(this,\'' + rowId + '\',\'all\')">\u5168\u90e8</button>';
+        types.forEach(t => {
+          html += '<button class="prov-kele-btn" data-rowid="' + rowId + '" data-type="' + t + '" onclick="filterMajors(this,\'' + rowId + '\',\'' + t + '\')">' + t + '(' + keleCounts[t] + ')</button>';
+        });
+        html += '</div>';
+      }
+      html += '<table class="emp-table prov-major-table" style="margin:0;font-size:0.82rem"><thead><tr><th>\u4e13\u4e1a\u540d\u79f0</th><th>\u79d1\u7c7b</th><th>\u9009\u79d1\u8981\u6c42</th><th>\u6700\u4f4e\u5206</th><th>\u6700\u4f4e\u4f4d\u6b21</th><th>\u5e74\u4efd</th>';
+      if (userScore) html += '<th>\u5dee\u8ddd</th><th>\u8bc4\u4f30</th>';
+      html += '</tr></thead><tbody>';
+      for (const m of majors) {
+        const mScore = m.min_score != null ? m.min_score : (m.score || 0);
+        const mName = m.sp_name || m.major || '-';
+        const mSubjectReq = m.subject_req || '-';
+        const mRank = (m.min_rank != null && m.min_rank > 0) ? m.min_rank : '';
+        const mYear = m.year || '';
+        const mType = m.type || '综合';
+        const mGap = userScore ? userScore - mScore : null;
+        let chanceLabel = '-', chanceGroup = 'none';
+        if (mGap !== null) {
+          if (mGap > 20) { chanceLabel = '稳'; chanceGroup = 'wen'; }
+          else if (mGap > 0) { chanceLabel = '冲'; chanceGroup = 'chong'; }
+          else { chanceLabel = '保'; chanceGroup = 'bao'; }
+        }
+        html += '<tr class="major-row" data-type="' + esc(mType) + '">';
+        html += '<td style="white-space:nowrap">' + esc(mName) + '</td>';
+        html += '<td><span class="tag tag-' + (mType.includes('理') ? 'accent2' : mType.includes('文') ? 'warning' : 'info') + '" style="font-size:0.72rem;padding:1px 5px">' + esc(mType) + '</span></td>';
+        html += '<td style="font-size:0.78rem;color:var(--text3)">' + esc(mSubjectReq) + '</td>';
+        html += '<td><strong>' + mScore + '</strong></td>';
+        html += '<td style="color:var(--text3)">' + mRank + '</td>';
+        html += '<td style="color:var(--text3)">' + mYear + '</td>';
+        if (userScore) {
+          html += '<td style="color:' + (mGap >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (mGap >= 0 ? '+' : '') + mGap + '</td>';
+          html += '<td><span class="uni-card-chance chance-' + chanceGroup + '" style="font-size:0.72rem">' + chanceLabel + '</span></td>';
+        }
+        html += '</tr>';
+      }
+      html += '</tbody></table></div></td></tr>';
+    }
   }
   html += '</tbody></table></div></div>';
   return html;
