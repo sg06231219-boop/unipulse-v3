@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, hmac, re, sqlite3, datetime, random, secrets, threading, uuid
 
-app = FastAPI(title="UniPulse v3", version="4.3.2")
+app = FastAPI(title="UniPulse v3", version="4.3.3")
 
 # CORS — 收窄为同源+已知域名
 _ORIGINS = [
@@ -78,7 +78,7 @@ def _backup_to_seed_json():
         uni_list = [dict(u) for u in unis]
         seed_data = {
             "universities": uni_list,
-            "version": "4.3.2", "updated_at": datetime.datetime.now().isoformat(),
+            "version": "4.3.3", "updated_at": datetime.datetime.now().isoformat(),
         }
         backup_path = os.path.join(DATA_DIR, "seed_backup.json")
         content = json.dumps(seed_data, ensure_ascii=False)
@@ -686,7 +686,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"4.3.2","service":"UniPulse"}
+    return {"status":"ok","version":"4.3.3","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
@@ -1415,11 +1415,19 @@ def get_province_scores(uni_id: int):
     # Check if we have REAL data (format: province → array of score objects)
     # Real data format: {"北京": [{"province":"北京","type":"综合","batch":"本科批","min_score":606,...}], ...}
     # Old format: {"北京": 585, "天津": 560, ...}
+    # New format: {"北京": {"type":"综合","batch":"本科一批","min_score":470,"min_rank":291416,"year":2025}, ...}
     has_real_data = False
     if province_scores:
         first_val = next(iter(province_scores.values()), None)
         if isinstance(first_val, list):
             has_real_data = True
+        elif isinstance(first_val, dict):
+            # New format: province → {type, batch, min_score, ...}
+            base_scores = {}
+            for prov, info in province_scores.items():
+                if isinstance(info, dict):
+                    base_scores[prov] = info.get("min_score", 0)
+            return {"uni_id": uni_id, "uni_name": uni_name, "base_scores": base_scores, "major_scores": {}}
 
     # If we have real data, return it directly in the format the frontend expects
     if has_real_data:
