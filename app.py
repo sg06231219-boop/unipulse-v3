@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, hmac, re, sqlite3, datetime, random, secrets, threading, uuid
 
-app = FastAPI(title="UniPulse v3", version="4.3.0")
+app = FastAPI(title="UniPulse v3", version="4.3.1")
 
 # CORS — 收窄为同源+已知域名
 _ORIGINS = [
@@ -78,7 +78,7 @@ def _backup_to_seed_json():
         uni_list = [dict(u) for u in unis]
         seed_data = {
             "universities": uni_list,
-            "version": "4.3.0", "updated_at": datetime.datetime.now().isoformat(),
+            "version": "4.3.1", "updated_at": datetime.datetime.now().isoformat(),
         }
         backup_path = os.path.join(DATA_DIR, "seed_backup.json")
         content = json.dumps(seed_data, ensure_ascii=False)
@@ -686,7 +686,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"4.3.0","service":"UniPulse"}
+    return {"status":"ok","version":"4.3.1","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
