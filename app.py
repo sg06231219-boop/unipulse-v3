@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""UniPulse v3 — 高考选校平台 · 后端"""
+"""UniPulse v3 - University Admissions Platform"""
 from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request, Cookie
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -8,9 +8,9 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, hmac, re, sqlite3, datetime, random, secrets, threading, uuid
 
-app = FastAPI(title="UniPulse v3", version="4.3.3")
+app = FastAPI(title="UniPulse v3", version="4.4.0")
 
-# CORS — 收窄为同源+已知域名
+# CORS ??
 _ORIGINS = [
     "https://unipulse-v3.onrender.com",
     "https://lz-sg-unipulse.hf.space",
@@ -25,7 +25,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # ── 密码哈希 ──
 def _admin_hash(password: str, salt: str = None) -> tuple:
-    """管理员密码哈希: SHA256 + salt，返回 (hash_hex, salt_hex)"""
+    """API endpoint"""
     if salt is None:
         salt = secrets.token_hex(16)
     h = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
@@ -46,9 +46,9 @@ def get_db():
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
-# ═══════════════════════════════════════
+# ?
 # 实时数据更新引擎
-# ═══════════════════════════════════════
+# ?
 DATA_UPDATE_HISTORY = []
 _UPDATE_LOCK = threading.Lock()
 _LAST_AUTO_UPDATE = 0
@@ -70,7 +70,7 @@ def _auto_update_worker():
                 pass
 
 def _backup_to_seed_json():
-    """备份当前DB到seed_backup.json（限制1MB避免OOM）"""
+    """API endpoint"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -78,7 +78,7 @@ def _backup_to_seed_json():
         uni_list = [dict(u) for u in unis]
         seed_data = {
             "universities": uni_list,
-            "version": "4.3.3", "updated_at": datetime.datetime.now().isoformat(),
+            "version": "4.4.0", "updated_at": datetime.datetime.now().isoformat(),
         }
         backup_path = os.path.join(DATA_DIR, "seed_backup.json")
         content = json.dumps(seed_data, ensure_ascii=False)
@@ -150,7 +150,7 @@ def log_update(result):
 # 启动后台更新线程
 _update_thread = threading.Thread(target=_auto_update_worker, daemon=True)
 _update_thread.start()
-_LAST_AUTO_UPDATE = time.time() - _AUTO_UPDATE_INTERVAL + 900  # 15分钟后首次更新
+_LAST_AUTO_UPDATE = time.time() - _AUTO_UPDATE_INTERVAL + 900  # 15分钟后首次更??
 
 def init_db():
     # Force recreate DB with updated seed data on startup
@@ -466,14 +466,14 @@ except Exception as e:
 
 # v4.2.1: Hardcoded forum seed (HF Space lacks seed.json, seed_slim has empty forum_posts)
 _FORUM_SEED = [
-    (1,"2026高考志愿填报指南：冲稳保三档怎么选？","志愿填报","高考老兵","<p>2026年高考已经结束，同学们即将面临志愿填报的关键时刻。所谓的\"冲稳保\"策略是指在志愿填报时，按照\"冲刺\"、\"稳妥\"、\"保底\"三个档次来分配志愿。</p><p><strong>冲：</strong>选择往年录取分数线比你的分数高5-15分的院校。这类院校你录取的可能性较低，但并非完全没有机会，特别是对于招生人数较多的院校和专业。</p><p><strong>稳：</strong>选择往年录取分数线与你的分数相当的院校（上下5分以内）。这是你最可能被录取的档次，应该重点关注的区间。</p><p><strong>保：</strong>选择往年录取分数线比你的分数低10-20分的院校。确保你至少有一个学校可以上，避免滑档到下一批次。</p><p>对于平行志愿省份，建议冲2-3所，稳3-4所，保1-2所。祝大家金榜题名！</p>",1280,42,'[\"志愿填报\",\"冲稳保\",\"高考\"]','2026-06-14T08:00:00',0),
-    (2,"计算机专业和软件工程有什么区别？","专业解析","IT老兵","<p>很多学弟学妹问我这个问题，我来系统回答一下：</p><p><strong>计算机科学与技术：</strong>偏重于理论基础，包括算法、数据结构、操作系统、编译原理、人工智能等。培养方向更偏向研究型人才，适合考研深造。</p><p><strong>软件工程：</strong>偏重于工程实践，包括需求分析、软件设计、项目管理、测试等。培养方向更偏向工程型人才，适合直接就业。</p><p>两者的核心课程有大量重叠（编程语言、数据结构、数据库等），区别在于侧重点不同。就业前景都相当不错，计算机可能在算法岗更有优势，软件工程在项目管理和架构设计上更有优势。</p><p>简单总结：想做科研选计算机，想直接出来工作选软件工程。</p>",960,38,'[\"专业解析\",\"计算机\",\"软件工程\"]','2026-06-14T09:00:00',0),
-    (3,"985和211在2026年还重要吗？","院校选择","考研人","<p>这是个老生常谈的问题。直接说结论：<strong>依然重要，但没以前那么重要了。</strong></p><p>985/211的优势：</p><ul><li>校招优势：大厂、国企、央企在校招时会优先去985/211</li><li>校友资源：名校的校友网络更强大</li><li>保研比例：985高校保研率可达30%以上</li><li>选调生资格：部分省份定向选调仅限985/211</li></ul><p>但近年来变化很大：</p><ul><li>企业越来越重视实际能力和项目经验</li><li>双一流建设取代了原来的985/211标签</li><li>新兴行业的头部公司更看重技术栈匹配度</li></ul><p>我的建议：能上985/211当然更好，但上不了也不必灰心。大学四年你的努力比学校的牌子重要得多。</p>",2340,56,'[\"院校选择\",\"985\",\"211\",\"就业\"]','2026-06-14T10:00:00',0),
-    (4,"学长经验：我是怎么选到心仪大学的","经验分享","大二学长","<p>去年这个时候我也和你们一样迷茫。分享一下我的心路历程：</p><p><strong>第一步：明确自己想要的。</strong>我是计算机方向的，所以大学必须有不错的工科实力。同时我想去大城市发展，所以优先考虑一线城市和新一线城市的高校。</p><p><strong>第二步：用数据说话。</strong>我用当时的志愿填报工具查了目标院校近三年的录取分数和位次，对照自己的省排名，筛选出了15所目标院校。</p><p><strong>第三步：深入了解。</strong>不只是看排名和分数线，我去知乎、贴吧看了学长学姐的真实评价，看了宿舍条件、食堂、社团活动等。</p><p><strong>第四步：合理分配冲稳保。</strong>我的分数在本省排名约前8%，最终选了2所冲的985、3所稳的211、2所保的省重点。最后被第二志愿（稳的211）录取了。</p><p>小提醒：<strong>服从调剂</strong>很重要！除非你有绝对把握，否则建议勾上。</p>",1870,32,'[\"经验分享\",\"城市选择\",\"专业选择\"]','2026-06-14T11:00:00',0),
-    (5,"电气工程及其自动化值得学吗？就业前景如何","专业解析","电气老学长","<p>电气工程及其自动化是工科中的常青树专业，值得学！</p><p><strong>就业方向：</strong></p><ul><li>国家电网/南方电网：这是电气专业最对口的方向，待遇优厚，但竞争激烈</li><li>发电集团：华能、大唐、国电投等，工作和生活比较稳定</li><li>电气设备制造：施耐德、ABB、正泰等，偏技术和研发</li><li>新能源汽车：比亚迪、特斯拉等，近年来是热门方向</li><li>轨道交通、建筑电气等其他方向</li></ul><p><strong>薪资水平：</strong>国家电网本科生起薪约8-12万/年（看地区），私企在12-20万/年。</p><p><strong>建议：</strong>如果你对物理和数学不排斥，动手能力强，喜欢稳定的工作，电气是个好选择。但如果想挣快钱，可能计算机类更适合。</p><p>另外提醒：电气专业的课程比较硬核，模电、电机学、电力系统分析都不容易，要做好心理准备。</p>",1560,29,'[\"专业解析\",\"电气工程\",\"就业前景\"]','2026-06-14T12:00:00',0),
-    (6,"文科生能报哪些好就业的专业？","专业解析","文科小白","<p>文科生常被说\"就业难\"，但其实选对专业一样有很好的发展！</p><p><strong>推荐专业：</strong></p><ul><li><strong>法学：</strong>考公大户，也可进入律所、企业法务。但需要考法考，有一定难度</li><li><strong>金融/经济学：</strong>银行、证券、保险等行业，文科生可报经济/金融类（部分院校文理兼收）</li><li><strong>会计/审计：</strong>需求量大，公务员和私企都有岗位，积累经验后薪资可观</li><li><strong>汉语言文学：</strong>教师、编辑、公务员、新媒体运营等方向</li><li><strong>新闻传播/网络与新媒体：</strong>新媒体时代需求旺盛，适合创意型人才</li><li><strong>英语/小语种：</strong>外贸、翻译、教育、跨境电商等</li><li><strong>教育学/心理学：</strong>教师编制或心理咨询方向</li></ul><p><strong>不推荐的：</strong>纯文科的历史学、哲学、考古学等（除非你能保研或考公）</p><p>文科生的核心出路：<strong>考公+考研+技能傍身</strong>。大学期间多学一些实用技能（数据分析、新媒体运营、设计等），会比纯文科背景更有竞争力。</p>",1980,45,'[\"专业解析\",\"文科\",\"就业\"]','2026-06-14T13:00:00',0),
-    (7,"二三本院校值得读吗？还是复读？","志愿填报","过来人","<p>这个问题每年都有很多人纠结。我先说结论：<strong>能走一个好专业，就值得读；如果对学校和专业都不满意，才考虑复读。</strong></p><p><strong>该去读的情况：</strong></p><ul><li>能选到一个就业前景不错的专业（计算机、会计、护理等）</li><li>你有明确的职业规划，大学期间可以考证、实习来弥补学校劣势</li><li>经济条件有限，不想多花一年时间复读</li><li>你已经尽力了，复读提分空间有限</li></ul><p><strong>考虑复读的情况：</strong></p><ul><li>考试发挥失常，与平时成绩差距在50分以上</li><li>只能去非常普通的院校且专业也不理想</li><li>有强烈的名校情结，愿意再拼一年</li></ul><p>另外提醒：如果你去了二三本，大学四年可以通过考研实现逆袭。很多双一流高校的研究生对二本院校是开放欢迎态度的。</p><p>最后说一句：人生的路很长，高考只是其中一站。无论你选择哪条路，都全力以赴就好。</p>",3100,68,'[\"志愿填报\",\"复读\",\"专升本\"]','2026-06-14T14:00:00',0),
-    (8,"各分数段2026高考志愿填报参考","志愿填报","数据控","<p>根据往年数据和2026年高考难度预测，我整理了各分数段的志愿填报建议：</p><p><strong>650分以上（全省前1%）：</strong></p><ul><li>可以冲清华、北大、复旦、上交等顶尖985</li><li>稳：浙大、南大、中科大、武大、华科</li><li>保：西交、哈工大、南开、同济</li></ul><p><strong>600-650分（全省前5%）：</strong></p><ul><li>冲：武大、华科、西交</li><li>稳：川大、山大、中南、东南</li><li>保：湖南大学、大连理工、重庆大学</li></ul><p><strong>550-600分（全省前15%）：</strong></p><ul><li>冲：兰大、东北大学、西南交大</li><li>稳：郑州大学、南昌大学、合肥工大</li><li>保：省属重点大学</li></ul><p><strong>500-550分（全省前30%）：</strong></p><ul><li>冲：省属重点大学</li><li>稳：省属普通一本</li><li>保：二本院校的好专业</li></ul><p><strong>500分以下：</strong></p><ul><li>优先选好专业（计算机、护理、会计等），学校次之</li><li>适合冲刺的省份：甘肃、新疆、西藏的高校分数线较低</li></ul><p>以上数据仅供参考，实际情况请以各省招生考试院公布的数据为准。</p>",4200,89,'[\"志愿填报\",\"分数段\",\"高考\"]','2026-06-14T15:00:00',0),
+    (1,"2026高考志愿填报指南：冲稳保三档怎么选？","志愿填报","高考老兵","<p>2026年高考已经结束，同学们即将面临志愿填报的关键时刻。所谓的\"冲稳保\"策略是指在志愿填报时，按照\"冲刺\"、\"稳妥\"、\"保底\"三个档次来分配志愿??/p><p><strong>冲：</strong>选择往年录取分数线比你的分数高5-15分的院校。这类院校你录取的可能性较低，但并非完全没有机会，特别是对于招生人数较多的院校和专业??/p><p><strong>稳：</strong>选择往年录取分数线与你的分数相当的院校(上??分以内)。这是你最可能被录取的档次，应该重点关注的区间??/p><p><strong>保：</strong>选择往年录取分数线比你的分数低10-20分的院校。确保你至少有一个学校可以上，避免滑档到下一批次??/p><p>对于平行志愿省份，建议冲2-3所，稳3-4所，保1-2所。祝大家金榜题名??/p>",1280,42,'[\"志愿填报\",\"冲稳保\",\"高考\"]','2026-06-14T08:00:00',0),
+    (2,"计算机专业和软件工程有什么区别？","专业解析","IT老兵","<p>很多学弟学妹问我这个问题，我来系统回答一下：</p><p><strong>计算机科学与技术：</strong>偏重于理论基础，包括算法、数据结构、操作系统、编译原理、人工智能等。培养方向更偏向研究型人才，适合考研深造??/p><p><strong>软件工程??/strong>偏重于工程实践，包括需求分析、软件设计、项目管理、测试等。培养方向更偏向工程型人才，适合直接就业??/p><p>两者的核心课程有大量重叠(编程语言、数据结构、数据库等)，区别在于侧重点不同。就业前景都相当不错，计算机可能在算法岗更有优势，软件工程在项目管理和架构设计上更有优势??/p><p>简单总结：想做科研选计算机，想直接出来工作选软件工程??/p>",960,38,'[\"专业解析\",\"计算机\",\"软件工程\"]','2026-06-14T09:00:00',0),
+    (3,"985和211在2026年还重要吗？","院校选择","考研人","<p>这是个老生常谈的问题。直接说结论：</p><p><strong>依然重要，但没以前那么重要了??/strong></p><p>985/211的优势：</p><ul><li>校招优势：大厂、国企、央企在校招时会优先??85/211</li><li>校友资源：名校的校友网络更强??/li><li>保研比例??85高校保研率可??0%以上</li><li>选调生资格：部分省份定向选调仅限985/211</li></ul><p>但近年来变化很大??/p><ul><li>企业越来越重视实际能力和项目经验</li><li>双一流建设取代了原来??85/211标签</li><li>新兴行业的头部公司更看重技术栈匹配??/li></ul><p>我的建议：能??85/211当然更好，但上不了也不必灰心。大学四年你的努力比学校的牌子重要得多??/p>",2340,56,'[\"院校选择\",\"985\",\"211\",\"就业\"]','2026-06-14T10:00:00',0),
+    (4,"学长经验：我是怎么选到心仪大学的","经验分享","大二学长","<p>去年这个时候我也和你们一样迷茫。分享一下我的心路历程：</p><p><strong>第一步：明确自己想要的??/strong>我是计算机方向的，所以大学必须有不错的工科实力。同时我想去大城市发展，所以优先考虑一线城市和新一线城市的高校??/p><p><strong>第二步：用数据说话??/strong>我用当时的志愿填报工具查了目标院校近三年的录取分数和位次，对照自己的省排名，筛选出??5所目标院校??/p><p><strong>第三步：深入了解??/strong>不只是看排名和分数线，我去知乎、贴吧看了学长学姐的真实评价，看了宿舍条件、食堂、社团活动等??/p><p><strong>第四步：合理分配冲稳保??/strong>我的分数在本省排名约??%，最终选了2所冲的985??所稳的211??所保的省重点。最后被第二志愿(稳??11)录取了??/p><p>小提醒：<strong>服从调剂</strong>很重要！除非你有绝对把握，否则建议勾上??/p>",1870,32,'[\"经验分享\",\"城市选择\",\"专业选择\"]','2026-06-14T11:00:00',0),
+    (5,"电气工程及其自动化值得学吗？就业前景如何","专业解析","电气老学长","<p>电气工程及其自动化是工科中的常青树专业，值得学！</p><p><strong>就业方向??/strong></p><ul><li>国家电网/南方电网：这是电气专业最对口的方向，待遇优厚，但竞争激??/li><li>发电集团：华能、大唐、国电投等，工作和生活比较稳??/li><li>电气设备制造：施耐德、ABB、正泰等，偏技术和研发</li><li>新能源汽车：比亚迪、特斯拉等，近年来是热门方向</li><li>轨道交通、建筑电气等其他方向</li></ul><p><strong>薪资水平??/strong>国家电网本科生起薪约8-12??年(看地区)，私企在12-20??年??/p><p><strong>建议??/strong>如果你对物理和数学不排斥，动手能力强，喜欢稳定的工作，电气是个好选择。但如果想挣快钱，可能计算机类更适合??/p><p>另外提醒：电气专业的课程比较硬核，模电、电机学、电力系统分析都不容易，要做好心理准备??/p>",1560,29,'[\"专业解析\",\"电气工程\",\"就业前景\"]','2026-06-14T12:00:00',0),
+    (6,"文科生能报哪些好就业的专业？","专业解析","文科小白","<p>文科生常被说\"就业难\"，但其实选对专业一样有很好的发展！</p><p><strong>推荐专业??/strong></p><ul><li><strong>法学??/strong>考公大户，也可进入律所、企业法务。但需要考法考，有一定难??/li><li><strong>金融/经济学：</strong>银行、证券、保险等行业，文科生可报经济/金融类(部分院校文理兼收??/li><li><strong>会计/审计??/strong>需求量大，公务员和私企都有岗位，积累经验后薪资可观</li><li><strong>汉语言文学??/strong>教师、编辑、公务员、新媒体运营等方??/li><li><strong>新闻传播/网络与新媒体??/strong>新媒体时代需求旺盛，适合创意型人??/li><li><strong>英语/小语种：</strong>外贸、翻译、教育、跨境电商等</li><li><strong>教育??心理学：</strong>教师编制或心理咨询方??/li></ul><p><strong>不推荐的??/strong>纯文科的历史学、哲学、考古学等(除非你能保研或考公??/p><p>文科生的核心出路??strong>考公+考研+技能傍??/strong>。大学期间多学一些实用技能(数据分析、新媒体运营、设计等)，会比纯文科背景更有竞争力??/p>",1980,45,'[\"专业解析\",\"文科\",\"就业\"]','2026-06-14T13:00:00',0),
+    (7,"二三本院校值得读吗？还是复读？","志愿填报","过来人","<p>这个问题每年都有很多人纠结。我先说结论??strong>能走一个好专业，就值得读；如果对学校和专业都不满意，才考虑复读??/strong></p><p><strong>该去读的情况??/strong></p><ul><li>能选到一个就业前景不错的专业(计算机、会计、护理等??/li><li>你有明确的职业规划，大学期间可以考证、实习来弥补学校劣势</li><li>经济条件有限，不想多花一年时间复??/li><li>你已经尽力了，复读提分空间有??/li></ul><p><strong>考虑复读的情况：</strong></p><ul><li>考试发挥失常，与平时成绩差距??0分以??/li><li>只能去非常普通的院校且专业也不理??/li><li>有强烈的名校情结，愿意再拼一??/li></ul><p>另外提醒：如果你去了二三本，大学四年可以通过考研实现逆袭。很多双一流高校的研究生对二本院校是开放欢迎态度的??/p><p>最后说一句：人生的路很长，高考只是其中一站。无论你选择哪条路，都全力以赴就好??/p>",3100,68,'[\"志愿填报\",\"复读\",\"专升本\"]','2026-06-14T14:00:00',0),
+    (8,"各分数段2026高考志愿填报参考","志愿填报","数据控","<p>根据往年数据和2026年高考难度预测，我整理了各分数段的志愿填报建议：</p><p><strong>650分以上(全省??%)：</strong></p><ul><li>可以冲清华、北大、复旦、上交等顶尖985</li><li>稳：浙大、南大、中科大、武大、华??/li><li>保：西交、哈工大、南开、同??/li></ul><p><strong>600-650分(全省??%)：</strong></p><ul><li>冲：武大、华科、西??/li><li>稳：川大、山大、中南、东??/li><li>保：湖南大学、大连理工、重庆大??/li></ul><p><strong>550-600分(全省??5%)：</strong></p><ul><li>冲：兰大、东北大学、西南交??/li><li>稳：郑州大学、南昌大学、合肥工??/li><li>保：省属重点大学</li></ul><p><strong>500-550分(全省??0%)：</strong></p><ul><li>冲：省属重点大学</li><li>稳：省属普通一??/li><li>保：二本院校的好专业</li></ul><p><strong>500分以下：</strong></p><ul><li>优先选好专业(计算机、护理、会计等)，学校次之</li><li>适合冲刺的省份：甘肃、新疆、西藏的高校分数线较??/li></ul><p>以上数据仅供参考，实际情况请以各省招生考试院公布的数据为准??/p>",4200,89,'[\"志愿填报\",\"分数段\",\"高考\"]','2026-06-14T15:00:00',0),
 ]
 _FORUM_COMMENTS_SEED = [
     (1,1,"李同学","太实用了，收藏了！",5,'2026-06-14T08:30:00'),
@@ -507,7 +507,7 @@ try:
         for r in empty:
             loc = r["loc"] or ""
             if "香港" in loc or "澳门" in loc or "台湾" in loc:
-                conn.execute("UPDATE universities SET region='港澳台' WHERE id=?", (r["id"],))
+                conn.execute("UPDATE universities SET region='港澳' WHERE id=?", (r["id"],))
             elif any(p in loc for p in ["北京","天津","河北","山西","内蒙古"]):
                 conn.execute("UPDATE universities SET region='华北' WHERE id=?", (r["id"],))
             elif any(p in loc for p in ["上海","江苏","浙江","安徽","福建","江西","山东"]):
@@ -626,7 +626,7 @@ try:
     conn.close()
 except Exception: pass
 
-# ── 管理员认证 ──
+#  ?
 
 # 管理员登录速率限制
 _ADMIN_LOGIN_WINDOW = 300  # 5分钟
@@ -642,7 +642,7 @@ def _check_admin_rate(ip: str):
         raise HTTPException(429, "登录尝试过多，请5分钟后再试")
     _admin_login_attempts[ip].append(now)
 
-# 管理员token（带过期）
+# token(?
 _ADMIN_TOKEN_TTL = 72 * 3600  # 72小时
 _admin_tokens = {}
 
@@ -653,7 +653,7 @@ def _cleanup_expired_tokens():
         _admin_tokens.pop(t, None)
 
 def verify_admin(token: str = Header(None, alias="Authorization")) -> bool:
-    """验证管理员token（含过期检查）"""
+    """Verify admin token (with expiry check)"""
     if not token:
         raise HTTPException(401, "Missing authorization token")
     token = token.replace("Bearer ", "")
@@ -667,7 +667,7 @@ def verify_admin(token: str = Header(None, alias="Authorization")) -> bool:
 
 @app.post("/admin/login")
 def admin_login(body: dict, request: Request):
-    """管理员登录（含限流+盐哈希）"""
+    """Admin login (with rate limit + salted hash)"""
     ip = request.client.host if request.client else "unknown"
     _check_admin_rate(ip)
     _cleanup_expired_tokens()
@@ -691,7 +691,7 @@ def admin_login(body: dict, request: Request):
     if not _admin_verify(password, user["password_hash"], stored_salt):
         raise HTTPException(401, "用户名或密码错误")
     
-    # 自动升级旧密码为盐哈希
+    # ?
     if not stored_salt:
         new_hash, new_salt = _admin_hash(password)
         conn = get_db()
@@ -712,7 +712,7 @@ def admin_login(body: dict, request: Request):
 
 @app.post("/admin/logout")
 def admin_logout(token: str = Header(None, alias="Authorization")):
-    """管理员登出"""
+    """API endpoint"""
     if token:
         token = token.replace("Bearer ", "")
         _admin_tokens.pop(token, None)
@@ -722,7 +722,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"4.3.3","service":"UniPulse"}
+    return {"status":"ok","version":"4.4.0","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
@@ -820,7 +820,7 @@ def list_universities(
         # Normalize employment_rate to percentage
         if d.get("employment_rate") and d["employment_rate"] <= 1:
             d["employment_rate"] = round(d["employment_rate"] * 100, 1)
-        # Fix description: replace '始于0年' with actual founded_year
+        # Fix description: replace '0? with actual founded_year
         if d.get("founded_year") and d["founded_year"] > 0 and d.get("description"):
             d["description"] = d["description"].replace("始建于0年", f"始建于{d['founded_year']}年")
         # Don't include province_scores in list view (too large)
@@ -840,7 +840,7 @@ def get_university(uni_id: int):
     d["tags"] = json.loads(d["tags"]) if d["tags"] else []
     d["province_scores"] = json.loads(d["province_scores"]) if d.get("province_scores") else {}
     d["notable_alumni"] = json.loads(d["notable_alumni"]) if d.get("notable_alumni") else []
-    # Normalize employment_rate to percentage (0-1 → 0-100)
+    # Normalize employment_rate to percentage (0-1 ?0-100)
     if d.get("employment_rate") and d["employment_rate"] <= 1:
         d["employment_rate"] = round(d["employment_rate"] * 100, 1)
     # Get employment data for this university
@@ -855,10 +855,10 @@ def get_university(uni_id: int):
         if isinstance(univs, list) and d["cn"] in univs:
             d["program_categories"].append({"name":p["name"],"icon":p["icon"]})
     conn.close()
-    # Fix description: replace '始建于0年' with actual founded_year
+    # Fix description: replace '?? with actual founded_year
     if d.get("founded_year") and d["founded_year"] > 0:
         d["description"] = d["description"].replace("始建于0年", f"始建于{d['founded_year']}年")
-        d["description"] = d["description"].replace("始建于0 ", f"始建于{d['founded_year']}年 ")
+        d["description"] = d["description"].replace("始建于0年 ", f"始建于{d['founded_year']}年 ")
     return d
 
 @app.get("/api/programs")
@@ -1036,7 +1036,7 @@ def edit_post_compat(post_id: int, body: dict):
 
 @app.delete("/api/forum/posts/{post_id}")
 def delete_post(post_id: int, session_id: Optional[str] = "", body: dict = None):
-    """删除帖子（软删除），需验证session_id"""
+    """删除帖子(软删除)，需验证session_id"""
     sid = session_id or (body or {}).get("session_id", "")
     conn = get_db()
     r = conn.execute("SELECT session_id FROM forum_posts WHERE id=?", (post_id,)).fetchone()
@@ -1086,7 +1086,7 @@ def like_comment(comment_id: int, body: dict = None):
 
 @app.post("/api/forum/posts/{post_id}/report")  # rate-limited by middleware
 def report_post(post_id: int, body: dict = None):
-    """举报帖子，超过5次自动隐藏"""
+    """API endpoint"""
     conn = get_db()
     if not conn.execute("SELECT 1 FROM forum_posts WHERE id=?", (post_id,)).fetchone():
         conn.close(); raise HTTPException(404, "Post not found")
@@ -1309,9 +1309,9 @@ def ai_report(
         if gap > 5:
             suggestions["冲"].append(d)
         elif gap >= -10:
-            suggestions["稳"].append(d)
+            suggestions["冲"].append(d)
         else:
-            suggestions["保"].append(d)
+            suggestions["冲"].append(d)
 
     # Add top picks regardless of score
     if interests:
@@ -1331,7 +1331,7 @@ def ai_report(
                 if d.get("employment_rate") and d["employment_rate"] <= 1:
                     d["employment_rate"] = round(d["employment_rate"] * 100, 1)
                 if not any(s["id"] == d["id"] for group in suggestions.values() for s in group):
-                    suggestions["稳"].append(d)
+                    suggestions["冲"].append(d)
 
     # Trim each group
     for k in suggestions:
@@ -1345,17 +1345,17 @@ def ai_report(
         "tips": [
             "冲稳保比例建议3:5:2",
             "关注院校专业组选科要求",
-            "参考近三年录取位次而非分数线",
+            "参考近三年录取位次而非分数",
             "提前批和专项计划不要错过",
             "服从调剂可降低退档风险"
         ]
     }
 
-# ── 分数段统计 ──
+#  ?
 
 @app.get("/api/score-distribution")
 def score_distribution():
-    """返回分数段院校数量分布"""
+    """API endpoint"""
     conn = get_db()
     ranges = [(300,400),(400,450),(450,500),(500,550),(550,580),(580,600),(600,620),(620,640),(640,660),(660,680),(680,700),(700,750)]
     result = []
@@ -1368,7 +1368,7 @@ def score_distribution():
 
 @app.get("/api/admission-chance")
 def admission_chance(score: int, uni_id: Optional[int] = None, region: Optional[str] = None):
-    """计算录取概率（简化模型：基于分数线差值）"""
+    """计算录取概率(简化模型：基于分数线差值)"""
     conn = get_db()
     if uni_id:
         u = conn.execute("SELECT gaokao_score, name FROM universities WHERE id=?", (uni_id,)).fetchone()
@@ -1406,8 +1406,8 @@ def admission_chance(score: int, uni_id: Optional[int] = None, region: Optional[
 @app.post("/api/compare")
 @app.get("/api/compare")
 async def compare_univers(request: Request, ids: list[int] = Query([])):
-    """院校对比：多校指标并列展示（支持GET query和POST body两种方式）"""
-    # POST body: [1,2,3] 或 {"ids":[1,2,3]}
+    """API endpoint"""
+    # POST body: [1,2,3] ?{"ids":[1,2,3]}
     if request.method == "POST":
         try:
             body = await request.json()
@@ -1470,12 +1470,67 @@ def search_universities_api(q: str = Query("", max_length=100), limit: int = Que
     conn.close()
     return [dict(r) for r in rows]
 
+# Load majors detail data
+_MAJORS_DETAIL = {}
+_majors_path = os.path.join(os.path.dirname(__file__), "majors.json")
+if os.path.exists(_majors_path):
+    with open(_majors_path, "r", encoding="utf-8") as _f:
+        _MAJORS_DETAIL = {m["name"]: m for m in json.load(_f)}
+
+# Load faculties data
+_FACULTIES = {}
+_fac_path = os.path.join(os.path.dirname(__file__), "faculties.json")
+if os.path.exists(_fac_path):
+    with open(_fac_path, "r", encoding="utf-8") as _f:
+        _FACULTIES = json.load(_f)
+
 @app.get("/api/majors")
 def list_majors():
     conn = get_db()
     rows = conn.execute("SELECT DISTINCT program_name FROM employment ORDER BY program_name").fetchall()
     conn.close()
-    return [r["program_name"] for r in rows if r["program_name"]]
+    names = [r["program_name"] for r in rows if r["program_name"]]
+    # Enrich with detail from majors.json if available
+    result = []
+    for n in names:
+        d = _MAJORS_DETAIL.get(n, {})
+        result.append({
+            "name": n,
+            "category": d.get("category", ""),
+            "tags": d.get("tags", []),
+            "avg_salary_range": d.get("avg_salary_range", ""),
+            "employment_rate_range": d.get("employment_rate_range", ""),
+            "difficulty_score": d.get("difficulty_score", 0),
+            "competition_score": d.get("competition_score", 0),
+            "prospects_score": d.get("prospects_score", 0),
+        })
+    return result
+
+@app.get("/api/majors/{major_name}")
+def get_major_detail(major_name: str):
+    """获取专业详细信息"""
+    d = _MAJORS_DETAIL.get(major_name)
+    if not d:
+        raise HTTPException(404, f"Major '{major_name}' not found")
+    # Also fetch employment stats for this major
+    conn = get_db()
+    stats = conn.execute("SELECT COUNT(*) as cnt, ROUND(AVG(salary_avg)) as avg_sal, ROUND(AVG(employment_rate),1) as avg_rate FROM employment WHERE program_name=?", (major_name,)).fetchone()
+    conn.close()
+    d["stats"] = {"count": stats["cnt"], "avg_salary": stats["avg_sal"], "avg_employment_rate": stats["avg_rate"]}
+    return d
+
+@app.get("/api/faculties")
+def list_faculties():
+    """API endpoint"""
+    return _FACULTIES
+
+@app.get("/api/faculties/{uni_name}")
+def get_faculties(uni_name: str):
+    """API endpoint"""
+    d = _FACULTIES.get(uni_name)
+    if not d:
+        raise HTTPException(404, f"University '{uni_name}' not found")
+    return d
 
 @app.get("/api/employment/statistics")
 def employment_statistics():
@@ -1488,7 +1543,7 @@ def employment_statistics():
 
 @app.get("/api/universities/{uni_id}/province-scores")
 def get_province_scores(uni_id: int):
-    """获取某高校各省分数线（含分专业分数线，优先返回真实数据）"""
+    """获取某高校各省分数线(含分专业分数线，优先返回真实数据)"""
     conn = get_db()
     row = conn.execute("SELECT * FROM universities WHERE id=?", (uni_id,)).fetchone()
     if not row:
@@ -1510,17 +1565,17 @@ def get_province_scores(uni_id: int):
         except Exception:
             province_scores = {}
 
-    # Check if we have REAL data (format: province → array of score objects)
-    # Real data format: {"北京": [{"province":"北京","type":"综合","batch":"本科批","min_score":606,...}], ...}
+    # Check if we have REAL data (format: province ?array of score objects)
+    # Real data format: {"": [{"province":"","type":"","batch":"?,"min_score":606,...}], ...}
     # Old format: {"北京": 585, "天津": 560, ...}
-    # New format: {"北京": {"type":"综合","batch":"本科一批","min_score":470,"min_rank":291416,"year":2025}, ...}
+    # New format: {"": {"type":"","batch":"?,"min_score":470,"min_rank":291416,"year":2025}, ...}
     has_real_data = False
     if province_scores:
         first_val = next(iter(province_scores.values()), None)
         if isinstance(first_val, list):
             has_real_data = True
         elif isinstance(first_val, dict):
-            # New format: province → {type, batch, min_score, ..., majors: [...]}
+            # New format: province ?{type, batch, min_score, ..., majors: [...]}
             base_scores = {}
             major_scores = {}
             for prov, info in province_scores.items():
@@ -1612,7 +1667,7 @@ def get_province_scores(uni_id: int):
             except Exception:
                 base_scores = {}
     else:
-        # province_scores is old format (province → number)
+        # province_scores is old format (province ?number)
         base_scores = province_scores
 
     if not base_scores:
@@ -1631,7 +1686,7 @@ def get_province_scores(uni_id: int):
             numeric_scores[k] = min((e.get("min_score", 9999) for e in v if isinstance(e, dict) and e.get("min_score")), default=gaokao_score)
     base_scores = numeric_scores
 
-    # ── 27个专业类 + 分数偏移区间（相对校线）──
+    # ── 27个专业类 + 分数偏移区间(相对校线)──
     all_majors = [
         ("计算机科学与技术", 10, 28, False),
         ("软件工程", 8, 25, False),
@@ -1733,7 +1788,7 @@ try:
     conn.close()
 except Exception: pass
 
-# ── 论坛管理API（需管理员认证） ──
+# ── 论坛管理API(需管理员认证) ──
 
 @app.put("/admin/forum/posts/{post_id}")
 def admin_edit_post(post_id: int, body: dict, auth: bool = Depends(verify_admin)):
@@ -1805,11 +1860,11 @@ def admin_hide_comment(comment_id: int, body: dict = None, auth: bool = Depends(
     return {"status": "hidden" if new_val else "visible"}
 
 
-# ── 管理员后台 ──
+#  ?
 
 @app.get("/admin")
 def admin_panel():
-    # 前端页面本身公开，认证在API层执行
+    # API?
     path = os.path.join(static_dir, "admin.html")
     if not os.path.isfile(path):
         return JSONResponse({"error": f"admin.html not found at {path}"}, status_code=404)
@@ -1861,14 +1916,14 @@ def admin_delete_post(post_id: int, auth: bool = Depends(verify_admin)):
 
 @app.delete("/api/forum/posts/{post_id}")
 def delete_post(post_id: int, body: dict = None):
-    """普通用户删帖（验证session_id）"""
+    """API endpoint"""
     conn = get_db()
     r = conn.execute("SELECT * FROM forum_posts WHERE id=?", (post_id,)).fetchone()
     if not r:
         conn.close(); raise HTTPException(404, "Post not found")
     session_id = (body or {}).get("session_id", "")
     if not (session_id and r["session_id"] and session_id == r["session_id"]):
-        conn.close(); raise HTTPException(403, "无权删除此帖子")
+        conn.close(); raise HTTPException(403, "无权删除此帖")
     conn.execute("DELETE FROM forum_comments WHERE post_id=?", (post_id,))
     conn.execute("DELETE FROM forum_posts WHERE id=?", (post_id,))
     conn.commit()
@@ -1879,14 +1934,14 @@ def delete_post(post_id: int, body: dict = None):
 
 @app.put("/api/forum/posts/{post_id}/edit")
 def edit_post(post_id: int, body: dict):
-    """用户编辑自己的帖子（验证session_id）"""
+    """API endpoint"""
     conn = get_db()
     r = conn.execute("SELECT * FROM forum_posts WHERE id=?", (post_id,)).fetchone()
     if not r:
         conn.close(); raise HTTPException(404, "Post not found")
     session_id = body.get("session_id", "")
     if not (session_id and r["session_id"] and session_id == r["session_id"]):
-        conn.close(); raise HTTPException(403, "无权编辑此帖子")
+        conn.close(); raise HTTPException(403, "无权编辑此帖")
     sets, params = [], []
     for k in ["title", "content", "category"]:
         if k in body:
@@ -1904,7 +1959,7 @@ def edit_post(post_id: int, body: dict):
 
 @app.delete("/api/forum/comments/{comment_id}")
 def user_delete_comment(comment_id: int, body: dict = None):
-    """用户删除自己的评论（验证session_id）"""
+    """API endpoint"""
     conn = get_db()
     r = conn.execute("SELECT * FROM forum_comments WHERE id=?", (comment_id,)).fetchone()
     if not r:
@@ -1935,16 +1990,16 @@ def admin_forum_purge(auth: bool = Depends(verify_admin)):
     conn.close()
     return {"status": "purged"}
 
-# ── 志愿表持久化（SQLite）──
+# ── 志愿表持久化(SQLite)──
 
 def get_session_id_from_request(request: Request, body: dict = None, fallback: str = "") -> str:
     """
-    从多个来源获取 session_id，优先级：
+    从多个来源获??session_id，优先级??
     1. Cookie: unipulse_session
     2. URL query param: session_id
     3. Request body: session_id
     4. fallback 参数
-    5. 自动生成新 session_id
+    5. Auto-generate session_id
     """
     # 1. Cookie
     sid = request.cookies.get("unipulse_session", "")
@@ -1966,14 +2021,14 @@ def get_session_id_from_request(request: Request, body: dict = None, fallback: s
     return uuid.uuid4().hex[:16]
 
 class WishItem(BaseModel):
-    uni_id: int; group: str = "稳"  # 冲/稳/保; order: int = 0
+    uni_id: int; group: str = "冲"  # ?????? order: int = 0
 
 class WishTable(BaseModel):
     session_id: str; name: str = "我的志愿表"; items: list[WishItem] = []
 
 @app.get("/api/wish-table/{session_id}")
 def get_wish_table(session_id: str, request: Request = None):
-    """获取志愿表 — 支持 cookie / URL path / query param 获取 session_id"""
+    """API endpoint"""
     conn = get_db()
     rows = conn.execute("""
         SELECT w.*, COALESCE(w.uni_name, u.name) as uni_name,
@@ -1998,7 +2053,7 @@ def get_wish_table(session_id: str, request: Request = None):
 
 @app.post("/api/wish-table")
 def save_wish_table(body: dict, request: Request = None):
-    """保存整张志愿表（全量替换）"""
+    """API endpoint"""
     session_id = get_session_id_from_request(request, body)
     items = body.get("items", [])
     if not session_id:
@@ -2006,7 +2061,7 @@ def save_wish_table(body: dict, request: Request = None):
     conn = get_db()
     conn.execute("DELETE FROM wish_list WHERE session_id = ?", (session_id,))
     for item in items:
-        grp = item.get("group", "稳")
+        grp = item.get("group", "冲")
         grp_order = 0 if grp == "冲" else (1 if grp == "稳" else 2)
         uni_id = item["uni_id"]
         # 获取院校名称
@@ -2026,7 +2081,7 @@ def add_wish_item(body: dict, request: Request = None):
     """添加单个志愿"""
     session_id = get_session_id_from_request(request, body)
     uni_id = body.get("uni_id", 0)
-    group = body.get("group", "稳")
+    group = body.get("group", "冲")
     if not session_id or not uni_id:
         raise HTTPException(400, "session_id and uni_id required")
     grp_order = 0 if group == "冲" else (1 if group == "稳" else 2)
@@ -2059,7 +2114,7 @@ def add_wish_item(body: dict, request: Request = None):
 
 @app.delete("/api/wish-table/remove")
 def remove_wish_item(request: Request = None, session_id: str = "", uni_id: int = 0):
-    """删除单个志愿 — session_id 支持 cookie / query param"""
+    """API endpoint"""
     if not session_id and request:
         session_id = request.cookies.get("unipulse_session", request.query_params.get("session_id", ""))
     if not session_id:
@@ -2072,7 +2127,7 @@ def remove_wish_item(request: Request = None, session_id: str = "", uni_id: int 
 
 @app.delete("/api/wish-table/clear")
 def clear_wish_table(request: Request = None, session_id: str = ""):
-    """清空志愿表 — session_id 支持 cookie / query param"""
+    """API endpoint"""
     if not session_id and request:
         session_id = request.cookies.get("unipulse_session", request.query_params.get("session_id", ""))
     if not session_id:
@@ -2085,7 +2140,7 @@ def clear_wish_table(request: Request = None, session_id: str = ""):
 
 @app.get("/api/wish-table/{session_id}/export")
 def export_wish_table(session_id: str, format: str = "json"):
-    """导出志愿表"""
+    """API endpoint"""
     data = get_wish_table(session_id)
     if format == "csv":
         import io
@@ -2101,7 +2156,7 @@ def export_wish_table(session_id: str, format: str = "json"):
             headers={"Content-Disposition": f"attachment; filename=wish_table_{session_id[:8]}.csv"})
     return data
 
-# ── 静态文件 ──
+#  ?
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(_BASE_DIR, "static")
