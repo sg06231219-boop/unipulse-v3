@@ -218,6 +218,18 @@ def init_db():
         path TEXT, referrer TEXT, user_agent TEXT,
         ip_hash TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS post_likes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id INTEGER, session_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(post_id, session_id)
+    );
+    CREATE TABLE IF NOT EXISTS comment_likes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        comment_id INTEGER, session_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(comment_id, session_id)
+    );
     CREATE TABLE IF NOT EXISTS wish_list (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id TEXT NOT NULL,
@@ -254,6 +266,20 @@ def init_db():
         post_id INTEGER NOT NULL,
         reason TEXT DEFAULT '',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS post_likes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        post_id INTEGER NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(session_id, post_id)
+    );
+    CREATE TABLE IF NOT EXISTS comment_likes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        comment_id INTEGER NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(session_id, comment_id)
     );
     """)
     conn.commit()
@@ -440,7 +466,7 @@ except Exception as e:
 
 # v4.2.1: Hardcoded forum seed (HF Space lacks seed.json, seed_slim has empty forum_posts)
 _FORUM_SEED = [
-    (1,"2026高考志愿填报指坍?冲稳保三档怎么选？","志愿填报","高考老兵","<p>2026年高考已经结束，同学们即将面临志愿填报的关键时刻。所谓的\"冲稳保\"策略是指在志愿填报时，按照\"冲刺\"、\"稳妥\"、\"保底\"三个档次来分配志愿。</p><p><strong>冲：</strong>选择往年录取分数线比你的分数高5-15分的院校。这类院校你录取的可能性较低，但并非完全没有机会，特别是对于招生人数较多的院校和专业。</p><p><strong>稳：</strong>选择往年录取分数线与你的分数相当的院校（上下5分以内）。这是你最可能被录取的档次，应该重点关注的区间。</p><p><strong>保：</strong>选择往年录取分数线比你的分数低10-20分的院校。确保你至少有一个学校可以上，避免滑档到下一批次。</p><p>对于平行志愿省份，建议冲2-3所，稳3-4所，保1-2所。祝大家金榜题名！</p>",1280,42,'[\"志愿填报\",\"冲稳保\",\"高考\"]','2026-06-14T08:00:00',0),
+    (1,"2026高考志愿填报指南：冲稳保三档怎么选？","志愿填报","高考老兵","<p>2026年高考已经结束，同学们即将面临志愿填报的关键时刻。所谓的\"冲稳保\"策略是指在志愿填报时，按照\"冲刺\"、\"稳妥\"、\"保底\"三个档次来分配志愿。</p><p><strong>冲：</strong>选择往年录取分数线比你的分数高5-15分的院校。这类院校你录取的可能性较低，但并非完全没有机会，特别是对于招生人数较多的院校和专业。</p><p><strong>稳：</strong>选择往年录取分数线与你的分数相当的院校（上下5分以内）。这是你最可能被录取的档次，应该重点关注的区间。</p><p><strong>保：</strong>选择往年录取分数线比你的分数低10-20分的院校。确保你至少有一个学校可以上，避免滑档到下一批次。</p><p>对于平行志愿省份，建议冲2-3所，稳3-4所，保1-2所。祝大家金榜题名！</p>",1280,42,'[\"志愿填报\",\"冲稳保\",\"高考\"]','2026-06-14T08:00:00',0),
     (2,"计算机专业和软件工程有什么区别？","专业解析","IT老兵","<p>很多学弟学妹问我这个问题，我来系统回答一下：</p><p><strong>计算机科学与技术：</strong>偏重于理论基础，包括算法、数据结构、操作系统、编译原理、人工智能等。培养方向更偏向研究型人才，适合考研深造。</p><p><strong>软件工程：</strong>偏重于工程实践，包括需求分析、软件设计、项目管理、测试等。培养方向更偏向工程型人才，适合直接就业。</p><p>两者的核心课程有大量重叠（编程语言、数据结构、数据库等），区别在于侧重点不同。就业前景都相当不错，计算机可能在算法岗更有优势，软件工程在项目管理和架构设计上更有优势。</p><p>简单总结：想做科研选计算机，想直接出来工作选软件工程。</p>",960,38,'[\"专业解析\",\"计算机\",\"软件工程\"]','2026-06-14T09:00:00',0),
     (3,"985和211在2026年还重要吗？","院校选择","考研人","<p>这是个老生常谈的问题。直接说结论：<strong>依然重要，但没以前那么重要了。</strong></p><p>985/211的优势：</p><ul><li>校招优势：大厂、国企、央企在校招时会优先去985/211</li><li>校友资源：名校的校友网络更强大</li><li>保研比例：985高校保研率可达30%以上</li><li>选调生资格：部分省份定向选调仅限985/211</li></ul><p>但近年来变化很大：</p><ul><li>企业越来越重视实际能力和项目经验</li><li>双一流建设取代了原来的985/211标签</li><li>新兴行业的头部公司更看重技术栈匹配度</li></ul><p>我的建议：能上985/211当然更好，但上不了也不必灰心。大学四年你的努力比学校的牌子重要得多。</p>",2340,56,'[\"院校选择\",\"985\",\"211\",\"就业\"]','2026-06-14T10:00:00',0),
     (4,"学长经验：我是怎么选到心仪大学的","经验分享","大二学长","<p>去年这个时候我也和你们一样迷茫。分享一下我的心路历程：</p><p><strong>第一步：明确自己想要的。</strong>我是计算机方向的，所以大学必须有不错的工科实力。同时我想去大城市发展，所以优先考虑一线城市和新一线城市的高校。</p><p><strong>第二步：用数据说话。</strong>我用当时的志愿填报工具查了目标院校近三年的录取分数和位次，对照自己的省排名，筛选出了15所目标院校。</p><p><strong>第三步：深入了解。</strong>不只是看排名和分数线，我去知乎、贴吧看了学长学姐的真实评价，看了宿舍条件、食堂、社团活动等。</p><p><strong>第四步：合理分配冲稳保。</strong>我的分数在本省排名约前8%，最终选了2所冲的985、3所稳的211、2所保的省重点。最后被第二志愿（稳的211）录取了。</p><p>小提醒：<strong>服从调剂</strong>很重要！除非你有绝对把握，否则建议勾上。</p>",1870,32,'[\"经验分享\",\"城市选择\",\"专业选择\"]','2026-06-14T11:00:00',0),
@@ -975,24 +1001,86 @@ def create_comment(post_id: int, comment: CommentCreate):
     conn.close()
     return {"id":cid,"status":"created"}
 
-@app.post("/api/forum/posts/{post_id}/like")
-def like_post(post_id: int):
+class PostEdit(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
+    content: Optional[str] = None
+    tags: Optional[list] = None
+    session_id: Optional[str] = ""
+
+@app.put("/api/forum/posts/{post_id}")
+def edit_post(post_id: int, body: PostEdit):
+    """编辑帖子，需验证session_id"""
     conn = get_db()
+    r = conn.execute("SELECT session_id FROM forum_posts WHERE id=?", (post_id,)).fetchone()
+    if not r:
+        conn.close(); raise HTTPException(404, "Post not found")
+    if not (body.session_id and r["session_id"] and body.session_id == r["session_id"]):
+        conn.close(); raise HTTPException(403, "无权编辑")
+    sets, params = [], []
+    if body.title is not None: sets.append("title=?"); params.append(body.title)
+    if body.category is not None: sets.append("category=?"); params.append(body.category)
+    if body.content is not None: sets.append("content=?"); params.append(body.content)
+    if body.tags is not None: sets.append("tags=?"); params.append(json.dumps(body.tags, ensure_ascii=False))
+    if sets:
+        params.append(post_id)
+        conn.execute(f"UPDATE forum_posts SET {','.join(sets)} WHERE id=?", params)
+        conn.commit()
+    conn.close()
+    return {"status": "updated"}
+
+@app.put("/api/forum/posts/{post_id}/edit")
+def edit_post_compat(post_id: int, body: dict):
+    """兼容前端旧版调用路径"""
+    return edit_post(post_id, PostEdit(**body))
+
+@app.delete("/api/forum/posts/{post_id}")
+def delete_post(post_id: int, session_id: Optional[str] = "", body: dict = None):
+    """删除帖子（软删除），需验证session_id"""
+    sid = session_id or (body or {}).get("session_id", "")
+    conn = get_db()
+    r = conn.execute("SELECT session_id FROM forum_posts WHERE id=?", (post_id,)).fetchone()
+    if not r:
+        conn.close(); raise HTTPException(404, "Post not found")
+    if not (sid and r["session_id"] and sid == r["session_id"]):
+        conn.close(); raise HTTPException(403, "无权删除")
+    conn.execute("UPDATE forum_posts SET is_hidden=1 WHERE id=?", (post_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
+
+@app.post("/api/forum/posts/{post_id}/like")
+def like_post(post_id: int, body: dict = None):
+    """点赞帖子，防重复"""
+    sid = (body or {}).get("session_id", "") or "anon_" + str((body or {}).get("ip", ""))
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM forum_posts WHERE id=?", (post_id,)).fetchone():
+        conn.close(); raise HTTPException(404, "Post not found")
+    existing = conn.execute("SELECT 1 FROM post_likes WHERE post_id=? AND session_id=?", (post_id, sid)).fetchone()
+    if existing:
+        conn.close(); return {"status": "already_liked"}
+    conn.execute("INSERT OR IGNORE INTO post_likes (post_id, session_id) VALUES (?,?)", (post_id, sid))
     conn.execute("UPDATE forum_posts SET likes=likes+1 WHERE id=?", (post_id,))
     conn.commit()
     conn.close()
-    return {"status":"liked"}
+    return {"status": "liked"}
 
 @app.post("/api/forum/comments/{comment_id}/like")
-def like_comment(comment_id: int):
+def like_comment(comment_id: int, body: dict = None):
+    """点赞评论，防重复"""
+    sid = (body or {}).get("session_id", "") or "anon_" + str((body or {}).get("ip", ""))
     conn = get_db()
-    result = conn.execute("UPDATE forum_comments SET likes=likes+1 WHERE id=?", (comment_id,))
+    r = conn.execute("SELECT 1 FROM forum_comments WHERE id=?", (comment_id,)).fetchone()
+    if not r:
+        conn.close(); raise HTTPException(404, "Comment not found")
+    existing = conn.execute("SELECT 1 FROM comment_likes WHERE comment_id=? AND session_id=?", (comment_id, sid)).fetchone()
+    if existing:
+        conn.close(); return {"status": "already_liked"}
+    conn.execute("INSERT OR IGNORE INTO comment_likes (comment_id, session_id) VALUES (?,?)", (comment_id, sid))
+    conn.execute("UPDATE forum_comments SET likes=likes+1 WHERE id=?", (comment_id,))
     conn.commit()
-    if result.rowcount == 0:
-        conn.close()
-        raise HTTPException(404, "Comment not found")
     conn.close()
-    return {"status":"liked"}
+    return {"status": "liked"}
 
 # ── 帖子举报 ──
 
