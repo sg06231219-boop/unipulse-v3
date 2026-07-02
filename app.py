@@ -8,9 +8,9 @@ from pydantic import BaseModel
 from typing import Optional
 import json, os, time, hashlib, hmac, re, sqlite3, datetime, random, secrets, threading, uuid
 
-app = FastAPI(title="UniPulse v3", version="4.4.0")
+app = FastAPI(title="UniPulse v3", version="4.5.0")
 
-# CORS ??
+# CORS 配置
 _ORIGINS = [
     "https://unipulse-v3.onrender.com",
     "https://lz-sg-unipulse.hf.space",
@@ -150,7 +150,7 @@ def log_update(result):
 # 启动后台更新线程
 _update_thread = threading.Thread(target=_auto_update_worker, daemon=True)
 _update_thread.start()
-_LAST_AUTO_UPDATE = time.time() - _AUTO_UPDATE_INTERVAL + 900  # 15分钟后首次更??
+_LAST_AUTO_UPDATE = time.time() - _AUTO_UPDATE_INTERVAL + 900  # 15分钟后首次更新
 
 def init_db():
     # Force recreate DB with updated seed data on startup
@@ -177,7 +177,13 @@ def init_db():
         academicians INTEGER DEFAULT 0,
         dormitory TEXT DEFAULT '', canteen TEXT DEFAULT '', campus_life TEXT DEFAULT '',
         notable_alumni TEXT DEFAULT '', motto TEXT DEFAULT '',
-        school_nature TEXT DEFAULT '', affiliation TEXT DEFAULT ''
+        school_nature TEXT DEFAULT '', affiliation TEXT DEFAULT '',
+        strength_programs TEXT DEFAULT '',
+        program_rankings TEXT DEFAULT '',
+        admission_info TEXT DEFAULT '',
+        employment_detail TEXT DEFAULT '',
+        campus_facilities TEXT DEFAULT '',
+        transportation TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS programs (
         name TEXT PRIMARY KEY, icon TEXT, univs TEXT
@@ -292,6 +298,8 @@ def init_db():
         seed_gz_path = os.path.join(os.path.dirname(__file__), "seed_slim.json.gz")
         seed_path = os.path.join(DATA_DIR, "seed_backup.json")
         if not os.path.exists(seed_path):
+            seed_path = os.path.join(os.path.dirname(__file__), "seed_slim.json")
+        if not os.path.exists(seed_path):
             seed_path = os.path.join(os.path.dirname(__file__), "seed.json")
         if os.path.exists(seed_gz_path):
             import gzip
@@ -371,8 +379,9 @@ def init_db():
             details = uni_details_data.get(str(u["id"]), {})
             c.execute("""INSERT OR REPLACE INTO universities
                 (id,name,cn,loc,region,country,logo,initials,score,trend,trendV,stars,reviews,rank,level,type,description,gaokao_score,tuition,employment_rate,avg_salary,metrics,tags,province_scores,
-                 address,phone,website,founded_year,campus_area,student_count,faculty_count,doctoral_programs,master_programs,national_key_programs,postdoc_stations,academicians,dormitory,canteen,campus_life,notable_alumni,motto,school_nature,affiliation)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 address,phone,website,founded_year,campus_area,student_count,faculty_count,doctoral_programs,master_programs,national_key_programs,postdoc_stations,academicians,dormitory,canteen,campus_life,notable_alumni,motto,school_nature,affiliation,
+                 strength_programs,program_rankings,admission_info,employment_detail,campus_facilities,transportation)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (u["id"],u["name"],u["cn"],u["loc"],u["region"],u["country"],
                  u.get("logo",""),u["initials"],
                  u.get("score",0),u["trend"],u["trendV"],u["stars"],u["reviews"],u["rank"],
@@ -391,7 +400,13 @@ def init_db():
                  # notable_alumni in seed is already a JSON string; don't re-encode
                  (details.get("notable_alumni") or u.get("notable_alumni") or "[]") if isinstance(details.get("notable_alumni") or u.get("notable_alumni",""), str) and (details.get("notable_alumni") or u.get("notable_alumni","")).startswith('[') else json.dumps(details.get("notable_alumni") or u.get("notable_alumni",[]), ensure_ascii=False),
                  # Use or to avoid empty-details overriding real seed value
-                 details.get("motto") or u.get("motto",""),details.get("school_nature") or u.get("school_nature",""),details.get("affiliation") or u.get("affiliation","")))
+                 details.get("motto") or u.get("motto",""),details.get("school_nature") or u.get("school_nature",""),details.get("affiliation") or u.get("affiliation",""),
+                 json.dumps(u.get("strength_programs",[]),ensure_ascii=False) if isinstance(u.get("strength_programs"),list) else u.get("strength_programs",""),
+                 json.dumps(u.get("program_rankings",{}),ensure_ascii=False) if isinstance(u.get("program_rankings"),dict) else u.get("program_rankings",""),
+                 json.dumps(u.get("admission_info",{}),ensure_ascii=False) if isinstance(u.get("admission_info"),dict) else u.get("admission_info",""),
+                 json.dumps(u.get("employment_detail",{}),ensure_ascii=False) if isinstance(u.get("employment_detail"),dict) else u.get("employment_detail",""),
+                 json.dumps(u.get("campus_facilities",{}),ensure_ascii=False) if isinstance(u.get("campus_facilities"),dict) else u.get("campus_facilities",""),
+                 u.get("transportation","")))
 
         for p in PROGRAMS:
             c.execute("INSERT OR REPLACE INTO programs (name,icon,univs) VALUES (?,?,?)",
@@ -466,14 +481,14 @@ except Exception as e:
 
 # v4.2.1: Hardcoded forum seed (HF Space lacks seed.json, seed_slim has empty forum_posts)
 _FORUM_SEED = [
-    (1,"2026高考志愿填报指南：冲稳保三档怎么选？","志愿填报","高考老兵","<p>2026年高考已经结束，同学们即将面临志愿填报的关键时刻。所谓的\"冲稳保\"策略是指在志愿填报时，按照\"冲刺\"、\"稳妥\"、\"保底\"三个档次来分配志愿??/p><p><strong>冲：</strong>选择往年录取分数线比你的分数高5-15分的院校。这类院校你录取的可能性较低，但并非完全没有机会，特别是对于招生人数较多的院校和专业??/p><p><strong>稳：</strong>选择往年录取分数线与你的分数相当的院校(上??分以内)。这是你最可能被录取的档次，应该重点关注的区间??/p><p><strong>保：</strong>选择往年录取分数线比你的分数低10-20分的院校。确保你至少有一个学校可以上，避免滑档到下一批次??/p><p>对于平行志愿省份，建议冲2-3所，稳3-4所，保1-2所。祝大家金榜题名??/p>",1280,42,'[\"志愿填报\",\"冲稳保\",\"高考\"]','2026-06-14T08:00:00',0),
-    (2,"计算机专业和软件工程有什么区别？","专业解析","IT老兵","<p>很多学弟学妹问我这个问题，我来系统回答一下：</p><p><strong>计算机科学与技术：</strong>偏重于理论基础，包括算法、数据结构、操作系统、编译原理、人工智能等。培养方向更偏向研究型人才，适合考研深造??/p><p><strong>软件工程??/strong>偏重于工程实践，包括需求分析、软件设计、项目管理、测试等。培养方向更偏向工程型人才，适合直接就业??/p><p>两者的核心课程有大量重叠(编程语言、数据结构、数据库等)，区别在于侧重点不同。就业前景都相当不错，计算机可能在算法岗更有优势，软件工程在项目管理和架构设计上更有优势??/p><p>简单总结：想做科研选计算机，想直接出来工作选软件工程??/p>",960,38,'[\"专业解析\",\"计算机\",\"软件工程\"]','2026-06-14T09:00:00',0),
-    (3,"985和211在2026年还重要吗？","院校选择","考研人","<p>这是个老生常谈的问题。直接说结论：</p><p><strong>依然重要，但没以前那么重要了??/strong></p><p>985/211的优势：</p><ul><li>校招优势：大厂、国企、央企在校招时会优先??85/211</li><li>校友资源：名校的校友网络更强??/li><li>保研比例??85高校保研率可??0%以上</li><li>选调生资格：部分省份定向选调仅限985/211</li></ul><p>但近年来变化很大??/p><ul><li>企业越来越重视实际能力和项目经验</li><li>双一流建设取代了原来??85/211标签</li><li>新兴行业的头部公司更看重技术栈匹配??/li></ul><p>我的建议：能??85/211当然更好，但上不了也不必灰心。大学四年你的努力比学校的牌子重要得多??/p>",2340,56,'[\"院校选择\",\"985\",\"211\",\"就业\"]','2026-06-14T10:00:00',0),
-    (4,"学长经验：我是怎么选到心仪大学的","经验分享","大二学长","<p>去年这个时候我也和你们一样迷茫。分享一下我的心路历程：</p><p><strong>第一步：明确自己想要的??/strong>我是计算机方向的，所以大学必须有不错的工科实力。同时我想去大城市发展，所以优先考虑一线城市和新一线城市的高校??/p><p><strong>第二步：用数据说话??/strong>我用当时的志愿填报工具查了目标院校近三年的录取分数和位次，对照自己的省排名，筛选出??5所目标院校??/p><p><strong>第三步：深入了解??/strong>不只是看排名和分数线，我去知乎、贴吧看了学长学姐的真实评价，看了宿舍条件、食堂、社团活动等??/p><p><strong>第四步：合理分配冲稳保??/strong>我的分数在本省排名约??%，最终选了2所冲的985??所稳的211??所保的省重点。最后被第二志愿(稳??11)录取了??/p><p>小提醒：<strong>服从调剂</strong>很重要！除非你有绝对把握，否则建议勾上??/p>",1870,32,'[\"经验分享\",\"城市选择\",\"专业选择\"]','2026-06-14T11:00:00',0),
-    (5,"电气工程及其自动化值得学吗？就业前景如何","专业解析","电气老学长","<p>电气工程及其自动化是工科中的常青树专业，值得学！</p><p><strong>就业方向??/strong></p><ul><li>国家电网/南方电网：这是电气专业最对口的方向，待遇优厚，但竞争激??/li><li>发电集团：华能、大唐、国电投等，工作和生活比较稳??/li><li>电气设备制造：施耐德、ABB、正泰等，偏技术和研发</li><li>新能源汽车：比亚迪、特斯拉等，近年来是热门方向</li><li>轨道交通、建筑电气等其他方向</li></ul><p><strong>薪资水平??/strong>国家电网本科生起薪约8-12??年(看地区)，私企在12-20??年??/p><p><strong>建议??/strong>如果你对物理和数学不排斥，动手能力强，喜欢稳定的工作，电气是个好选择。但如果想挣快钱，可能计算机类更适合??/p><p>另外提醒：电气专业的课程比较硬核，模电、电机学、电力系统分析都不容易，要做好心理准备??/p>",1560,29,'[\"专业解析\",\"电气工程\",\"就业前景\"]','2026-06-14T12:00:00',0),
-    (6,"文科生能报哪些好就业的专业？","专业解析","文科小白","<p>文科生常被说\"就业难\"，但其实选对专业一样有很好的发展！</p><p><strong>推荐专业??/strong></p><ul><li><strong>法学??/strong>考公大户，也可进入律所、企业法务。但需要考法考，有一定难??/li><li><strong>金融/经济学：</strong>银行、证券、保险等行业，文科生可报经济/金融类(部分院校文理兼收??/li><li><strong>会计/审计??/strong>需求量大，公务员和私企都有岗位，积累经验后薪资可观</li><li><strong>汉语言文学??/strong>教师、编辑、公务员、新媒体运营等方??/li><li><strong>新闻传播/网络与新媒体??/strong>新媒体时代需求旺盛，适合创意型人??/li><li><strong>英语/小语种：</strong>外贸、翻译、教育、跨境电商等</li><li><strong>教育??心理学：</strong>教师编制或心理咨询方??/li></ul><p><strong>不推荐的??/strong>纯文科的历史学、哲学、考古学等(除非你能保研或考公??/p><p>文科生的核心出路??strong>考公+考研+技能傍??/strong>。大学期间多学一些实用技能(数据分析、新媒体运营、设计等)，会比纯文科背景更有竞争力??/p>",1980,45,'[\"专业解析\",\"文科\",\"就业\"]','2026-06-14T13:00:00',0),
-    (7,"二三本院校值得读吗？还是复读？","志愿填报","过来人","<p>这个问题每年都有很多人纠结。我先说结论??strong>能走一个好专业，就值得读；如果对学校和专业都不满意，才考虑复读??/strong></p><p><strong>该去读的情况??/strong></p><ul><li>能选到一个就业前景不错的专业(计算机、会计、护理等??/li><li>你有明确的职业规划，大学期间可以考证、实习来弥补学校劣势</li><li>经济条件有限，不想多花一年时间复??/li><li>你已经尽力了，复读提分空间有??/li></ul><p><strong>考虑复读的情况：</strong></p><ul><li>考试发挥失常，与平时成绩差距??0分以??/li><li>只能去非常普通的院校且专业也不理??/li><li>有强烈的名校情结，愿意再拼一??/li></ul><p>另外提醒：如果你去了二三本，大学四年可以通过考研实现逆袭。很多双一流高校的研究生对二本院校是开放欢迎态度的??/p><p>最后说一句：人生的路很长，高考只是其中一站。无论你选择哪条路，都全力以赴就好??/p>",3100,68,'[\"志愿填报\",\"复读\",\"专升本\"]','2026-06-14T14:00:00',0),
-    (8,"各分数段2026高考志愿填报参考","志愿填报","数据控","<p>根据往年数据和2026年高考难度预测，我整理了各分数段的志愿填报建议：</p><p><strong>650分以上(全省??%)：</strong></p><ul><li>可以冲清华、北大、复旦、上交等顶尖985</li><li>稳：浙大、南大、中科大、武大、华??/li><li>保：西交、哈工大、南开、同??/li></ul><p><strong>600-650分(全省??%)：</strong></p><ul><li>冲：武大、华科、西??/li><li>稳：川大、山大、中南、东??/li><li>保：湖南大学、大连理工、重庆大??/li></ul><p><strong>550-600分(全省??5%)：</strong></p><ul><li>冲：兰大、东北大学、西南交??/li><li>稳：郑州大学、南昌大学、合肥工??/li><li>保：省属重点大学</li></ul><p><strong>500-550分(全省??0%)：</strong></p><ul><li>冲：省属重点大学</li><li>稳：省属普通一??/li><li>保：二本院校的好专业</li></ul><p><strong>500分以下：</strong></p><ul><li>优先选好专业(计算机、护理、会计等)，学校次之</li><li>适合冲刺的省份：甘肃、新疆、西藏的高校分数线较??/li></ul><p>以上数据仅供参考，实际情况请以各省招生考试院公布的数据为准??/p>",4200,89,'[\"志愿填报\",\"分数段\",\"高考\"]','2026-06-14T15:00:00',0),
+    (1,"2026高考志愿填报指南：冲稳保三档怎么选？","志愿填报","高考老兵","<p>2026年高考已经结束，同学们即将面临志愿填报的关键时刻。所谓的\"冲稳保\"策略是指在志愿填报时，按照\"冲刺\"、\"稳妥\"、\"保底\"三个档次来分配志愿。</p><p><strong>冲：</strong>选择往年录取分数线比你的分数高5-15分的院校。这类院校你录取的可能性较低，但并非完全没有机会，特别是对于招生人数较多的院校和专业。</p><p><strong>稳：</strong>选择往年录取分数线与你的分数相当的院校(上下5分以内)。这是你最可能被录取的档次，应该重点关注的区间。</p><p><strong>保：</strong>选择往年录取分数线比你的分数低10-20分的院校。确保你至少有一个学校可以上，避免滑档到下一批次。</p><p>对于平行志愿省份，建议冲2-3所，稳3-4所，保1-2所。祝大家金榜题名！</p>",1280,42,'[\"志愿填报\",\"冲稳保\",\"高考\"]','2026-06-14T08:00:00',0),
+    (2,"计算机专业和软件工程有什么区别？","专业解析","IT老兵","<p>很多学弟学妹问我这个问题，我来系统回答一下：</p><p><strong>计算机科学与技术：</strong>偏重于理论基础，包括算法、数据结构、操作系统、编译原理、人工智能等。培养方向更偏向研究型人才，适合考研深造。</p><p><strong>软件工程：</strong>偏重于工程实践，包括需求分析、软件设计、项目管理、测试等。培养方向更偏向工程型人才，适合直接就业。</p><p>两者的核心课程有大量重叠(编程语言、数据结构、数据库等)，区别在于侧重点不同。就业前景都相当不错，计算机可能在算法岗更有优势，软件工程在项目管理和架构设计上更有优势。</p><p>简单总结：想做科研选计算机，想直接出来工作选软件工程。</p>",960,38,'[\"专业解析\",\"计算机\",\"软件工程\"]','2026-06-14T09:00:00',0),
+    (3,"985和211在2026年还重要吗？","院校选择","考研人","<p>这是个老生常谈的问题。直接说结论：</p><p><strong>依然重要，但没以前那么重要了。</strong></p><p>985/211的优势：</p><ul><li>校招优势：大厂、国企、央企在校招时会优先985/211</li><li>校友资源：名校的校友网络更强。</li><li>保研比例：985高校保研率可达30%以上</li><li>选调生资格：部分省份定向选调仅限985/211</li></ul><p>但近年来变化很大。</p><ul><li>企业越来越重视实际能力和项目经验</li><li>双一流建设取代了原来的985/211标签</li><li>新兴行业的头部公司更看重技术栈匹配。</li></ul><p>我的建议：能上985/211当然更好，但上不了也不必灰心。大学四年你的努力比学校的牌子重要得多。</p>",2340,56,'[\"院校选择\",\"985\",\"211\",\"就业\"]','2026-06-14T10:00:00',0),
+    (4,"学长经验：我是怎么选到心仪大学的","经验分享","大二学长","<p>去年这个时候我也和你们一样迷茫。分享一下我的心路历程：</p><p><strong>第一步：明确自己想要的。</strong>我是计算机方向的，所以大学必须有不错的工科实力。同时我想去大城市发展，所以优先考虑一线城市和新一线城市的高校。</p><p><strong>第二步：用数据说话。</strong>我用当时的志愿填报工具查了目标院校近三年的录取分数和位次，对照自己的省排名，筛选出15所目标院校。</p><p><strong>第三步：深入了解。</strong>不只是看排名和分数线，我去知乎、贴吧看了学长学姐的真实评价，看了宿舍条件、食堂、社团活动等。</p><p><strong>第四步：合理分配冲稳保。</strong>我的分数在本省排名约8%，最终选了2所冲的985、3所稳的211、1所保的省重点。最后被第二志愿(稳的211)录取了。</p><p>小提醒：<strong>服从调剂</strong>很重要！除非你有绝对把握，否则建议勾上。</p>",1870,32,'[\"经验分享\",\"城市选择\",\"专业选择\"]','2026-06-14T11:00:00',0),
+    (5,"电气工程及其自动化值得学吗？就业前景如何","专业解析","电气老学长","<p>电气工程及其自动化是工科中的常青树专业，值得学！</p><p><strong>就业方向：</strong></p><ul><li>国家电网/南方电网：这是电气专业最对口的方向，待遇优厚，但竞争激烈。</li><li>发电集团：华能、大唐、国电投等，工作和生活比较稳定。</li><li>电气设备制造：施耐德、ABB、正泰等，偏技术和研发</li><li>新能源汽车：比亚迪、特斯拉等，近年来是热门方向</li><li>轨道交通、建筑电气等其他方向</li></ul><p><strong>薪资水平：</strong>国家电网本科生起薪约8-12万/年(看地区)，私企在12-20万/年。</p><p><strong>建议：</strong>如果你对物理和数学不排斥，动手能力强，喜欢稳定的工作，电气是个好选择。但如果想挣快钱，可能计算机类更适合。</p><p>另外提醒：电气专业的课程比较硬核，模电、电机学、电力系统分析都不容易，要做好心理准备。</p>",1560,29,'[\"专业解析\",\"电气工程\",\"就业前景\"]','2026-06-14T12:00:00',0),
+    (6,"文科生能报哪些好就业的专业？","专业解析","文科小白","<p>文科生常被说\"就业难\"，但其实选对专业一样有很好的发展！</p><p><strong>推荐专业：</strong></p><ul><li><strong>法学：</strong>考公大户，也可进入律所、企业法务。但需要考法考，有一定难度。</li><li><strong>金融/经济学：</strong>银行、证券、保险等行业，文科生可报经济/金融类(部分院校文理兼收。</li><li><strong>会计/审计：</strong>需求量大，公务员和私企都有岗位，积累经验后薪资可观</li><li><strong>汉语言文学：</strong>教师、编辑、公务员、新媒体运营等方向。</li><li><strong>新闻传播/网络与新媒体：</strong>新媒体时代需求旺盛，适合创意型人才。</li><li><strong>英语/小语种：</strong>外贸、翻译、教育、跨境电商等</li><li><strong>教育学/心理学：</strong>教师编制或心理咨询方向。</li></ul><p><strong>不推荐的专业：</strong>纯文科的历史学、哲学、考古学等(除非你能保研或考公）。</p><p>文科生的核心出路：<strong>考公+考研+技能傍身</strong>。大学期间多学一些实用技能(数据分析、新媒体运营、设计等)，会比纯文科背景更有竞争力。</p>",1980,45,'[\"专业解析\",\"文科\",\"就业\"]','2026-06-14T13:00:00',0),
+    (7,"二三本院校值得读吗？还是复读？","志愿填报","过来人","<p>这个问题每年都有很多人纠结。我先说结论：<strong>能走一个好专业，就值得读；如果对学校和专业都不满意，才考虑复读。</strong></p><p><strong>该去读的情况：</strong></p><ul><li>能选到一个就业前景不错的专业(计算机、会计、护理等）。</li><li>你有明确的职业规划，大学期间可以考证、实习来弥补学校劣势</li><li>经济条件有限，不想多花一年时间复读。</li><li>你已经尽力了，复读提分空间有限。</li></ul><p><strong>考虑复读的情况：</strong></p><ul><li>考试发挥失常，与平时成绩差距20分以上/li><li>只能去非常普通的院校且专业也不理想。</li><li>有强烈的名校情结，愿意再拼一年。</li></ul><p>另外提醒：如果你去了二三本，大学四年可以通过考研实现逆袭。很多双一流高校的研究生对二本院校是开放欢迎态度的。</p><p>最后说一句：人生的路很长，高考只是其中一站。无论你选择哪条路，都全力以赴就好。</p>",3100,68,'[\"志愿填报\",\"复读\",\"专升本\"]','2026-06-14T14:00:00',0),
+    (8,"各分数段2026高考志愿填报参考","志愿填报","数据控","<p>根据往年数据和2026年高考难度预测，我整理了各分数段的志愿填报建议：</p><p><strong>650分以上(全省1%)：</strong></p><ul><li>可以冲清华、北大、复旦、上交等顶尖985</li><li>稳：浙大、南大、中科大、武大、华科。</li><li>保：西交、哈工大、南开、同济。</li></ul><p><strong>600-650分(全省5%），：</strong></p><ul><li>冲：武大、华科、西交。</li><li>稳：川大、山大、中南、东大。</li><li>保：湖南大学、大连理工、重庆大学。</li></ul><p><strong>550-600分(全省15%)：</strong></p><ul><li>冲：兰大、东北大学、西南交大。</li><li>稳：郑州大学、南昌大学、合肥工大。</li><li>保：省属重点大学</li></ul><p><strong>500-550分(全省30%)：</strong></p><ul><li>冲：省属重点大学</li><li>稳：省属普通一本。</li><li>保：二本院校的好专业</li></ul><p><strong>500分以下：</strong></p><ul><li>优先选好专业(计算机、护理、会计等)，学校次之</li><li>适合冲刺的省份：甘肃、新疆、西藏的高校分数线较低。</li></ul><p>以上数据仅供参考，实际情况请以各省招生考试院公布的数据为准。</p>",4200,89,'[\"志愿填报\",\"分数段\",\"高考\"]','2026-06-14T15:00:00',0),
 ]
 _FORUM_COMMENTS_SEED = [
     (1,1,"李同学","太实用了，收藏了！",5,'2026-06-14T08:30:00'),
@@ -581,6 +596,12 @@ _new_columns = {
         ("motto", "TEXT DEFAULT ''"),
         ("school_nature", "TEXT DEFAULT ''"),
         ("affiliation", "TEXT DEFAULT ''"),
+        ("strength_programs", "TEXT DEFAULT ''"),
+        ("program_rankings", "TEXT DEFAULT ''"),
+        ("admission_info", "TEXT DEFAULT ''"),
+        ("employment_detail", "TEXT DEFAULT ''"),
+        ("campus_facilities", "TEXT DEFAULT ''"),
+        ("transportation", "TEXT DEFAULT ''"),
     ],
     "forum_posts": [
         ("is_pinned", "INTEGER DEFAULT 0"),
@@ -840,6 +861,11 @@ def get_university(uni_id: int):
     d["tags"] = json.loads(d["tags"]) if d["tags"] else []
     d["province_scores"] = json.loads(d["province_scores"]) if d.get("province_scores") else {}
     d["notable_alumni"] = json.loads(d["notable_alumni"]) if d.get("notable_alumni") else []
+    for _f in ["strength_programs", "program_rankings", "admission_info", "employment_detail", "campus_facilities"]:
+        try:
+            d[_f] = json.loads(d[_f]) if d.get(_f) else ({} if _f not in ["strength_programs"] else [])
+        except:
+            pass
     # Normalize employment_rate to percentage (0-1 ?0-100)
     if d.get("employment_rate") and d["employment_rate"] <= 1:
         d["employment_rate"] = round(d["employment_rate"] * 100, 1)
@@ -855,7 +881,7 @@ def get_university(uni_id: int):
         if isinstance(univs, list) and d["cn"] in univs:
             d["program_categories"].append({"name":p["name"],"icon":p["icon"]})
     conn.close()
-    # Fix description: replace '?? with actual founded_year
+    # Fix description: replace placeholder with actual founded_year
     if d.get("founded_year") and d["founded_year"] > 0:
         d["description"] = d["description"].replace("始建于0年", f"始建于{d['founded_year']}年")
         d["description"] = d["description"].replace("始建于0年 ", f"始建于{d['founded_year']}年 ")
@@ -1034,20 +1060,7 @@ def edit_post_compat(post_id: int, body: dict):
     """兼容前端旧版调用路径"""
     return edit_post(post_id, PostEdit(**body))
 
-@app.delete("/api/forum/posts/{post_id}")
-def delete_post(post_id: int, session_id: Optional[str] = "", body: dict = None):
-    """删除帖子(软删除)，需验证session_id"""
-    sid = session_id or (body or {}).get("session_id", "")
-    conn = get_db()
-    r = conn.execute("SELECT session_id FROM forum_posts WHERE id=?", (post_id,)).fetchone()
-    if not r:
-        conn.close(); raise HTTPException(404, "Post not found")
-    if not (sid and r["session_id"] and sid == r["session_id"]):
-        conn.close(); raise HTTPException(403, "无权删除")
-    conn.execute("UPDATE forum_posts SET is_hidden=1 WHERE id=?", (post_id,))
-    conn.commit()
-    conn.close()
-    return {"status": "deleted"}
+# 注: DELETE /api/forum/posts/{post_id} 路由在文件末尾定义(L1917), 此处已移除重复定义
 
 @app.post("/api/forum/posts/{post_id}/like")
 def like_post(post_id: int, body: dict = None):
@@ -1309,9 +1322,9 @@ def ai_report(
         if gap > 5:
             suggestions["冲"].append(d)
         elif gap >= -10:
-            suggestions["冲"].append(d)
+            suggestions["稳"].append(d)
         else:
-            suggestions["冲"].append(d)
+            suggestions["保"].append(d)
 
     # Add top picks regardless of score
     if interests:
@@ -1405,18 +1418,23 @@ def admission_chance(score: int, uni_id: Optional[int] = None, region: Optional[
 
 @app.post("/api/compare")
 @app.get("/api/compare")
-async def compare_univers(request: Request, ids: list[int] = Query([])):
-    """API endpoint"""
-    # POST body: [1,2,3] ?{"ids":[1,2,3]}
+async def compare_univers(request: Request, ids: str = Query("")):
+    """API endpoint - 支持GET ?ids=1,2,3 和 POST body [1,2,3] 或 {"ids":[1,2,3]}"""
+    parsed_ids = []
     if request.method == "POST":
         try:
             body = await request.json()
             if isinstance(body, list):
-                ids = body
+                parsed_ids = [int(x) for x in body]
             elif isinstance(body, dict) and "ids" in body:
-                ids = body["ids"]
+                parsed_ids = [int(x) for x in body["ids"]]
         except Exception:
             pass
+    else:
+        # GET: 支持 ?ids=1,2,3 和 ?ids=1&ids=2&ids=3 两种格式
+        if ids:
+            parsed_ids = [int(x.strip()) for x in ids.split(",") if x.strip()]
+    ids = parsed_ids
     conn = get_db()
     result = []
     for uid in ids[:5]:
@@ -1994,7 +2012,7 @@ def admin_forum_purge(auth: bool = Depends(verify_admin)):
 
 def get_session_id_from_request(request: Request, body: dict = None, fallback: str = "") -> str:
     """
-    从多个来源获??session_id，优先级??
+    从多个来源获取session_id，优先级如下
     1. Cookie: unipulse_session
     2. URL query param: session_id
     3. Request body: session_id
@@ -2021,7 +2039,7 @@ def get_session_id_from_request(request: Request, body: dict = None, fallback: s
     return uuid.uuid4().hex[:16]
 
 class WishItem(BaseModel):
-    uni_id: int; group: str = "冲"  # ?????? order: int = 0
+    uni_id: int; group: str = "冲"  # 冲稳保三组 order: int = 0
 
 class WishTable(BaseModel):
     session_id: str; name: str = "我的志愿表"; items: list[WishItem] = []
