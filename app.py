@@ -78,7 +78,7 @@ def _backup_to_seed_json():
         uni_list = [dict(u) for u in unis]
         seed_data = {
             "universities": uni_list,
-            "version": "4.4.0", "updated_at": datetime.datetime.now().isoformat(),
+            "version": "4.5.0", "updated_at": datetime.datetime.now().isoformat(),
         }
         backup_path = os.path.join(DATA_DIR, "seed_backup.json")
         content = json.dumps(seed_data, ensure_ascii=False)
@@ -743,7 +743,7 @@ def admin_logout(token: str = Header(None, alias="Authorization")):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","version":"4.4.0","service":"UniPulse"}
+    return {"status":"ok","version":"4.5.0","service":"UniPulse"}
 
 @app.get("/api/data-update/status")
 def get_data_update_status():
