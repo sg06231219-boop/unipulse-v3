@@ -301,6 +301,7 @@ async function loadUniDetail(id) {
       <div class="detail-tabs" style="margin-top:1.5rem">
         <button class="detail-tab active" onclick="switchDetailTab('overview',this)">📊 概况</button>
         <button class="detail-tab" onclick="switchDetailTab('province',this)">🗺️省分数线</button>
+        <button class="detail-tab" onclick="switchDetailTab('employment',this)">💼 专业就业排行</button>
         <button class="detail-tab" onclick="switchDetailTab('info',this)">🏫 院校信息</button>
       </div>
 
@@ -327,6 +328,12 @@ async function loadUniDetail(id) {
       <!-- 省分数线Tab -->
       <div id="detailTabProvince" class="detail-tab-content" style="display:none">
         ${renderProvinceScores(u)}
+        <div id="scoreTrendContainer" style="margin-top:1rem"></div>
+      </div>
+
+      <!-- 专业就业排行Tab -->
+      <div id="detailTabEmployment" class="detail-tab-content" style="display:none">
+        ${renderEmploymentRanking(u)}
       </div>
 
       <!-- 院校信息Tab -->
@@ -343,6 +350,88 @@ function switchDetailTab(tab, btn) {
   if (btn) btn.classList.add('active');
   const el = document.getElementById('detailTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
   if (el) { el.style.display='block'; el.classList.add('active'); }
+  // Lazy load employment rankings when tab is opened
+  if (tab === 'employment') {
+    const uniId = el.closest('.uni-detail')?.querySelector('[data-uni-id]')?.dataset?.uniId;
+    // Fallback: try to extract from the page URL or context
+  }
+  // Lazy load score trend when province tab is opened
+  if (tab === 'province') {
+    const trendEl = document.getElementById('scoreTrendContainer');
+    if (trendEl && !trendEl.dataset.loaded) {
+      trendEl.dataset.loaded = '1';
+    }
+  }
+}
+
+// ── 专业就业排行 ──
+let _employmentRankingUniId = null;
+
+function renderEmploymentRanking(u) {
+  _employmentRankingUniId = u.id;
+  const programs = u.programs || [];
+  if (!programs.length) {
+    return '<p style="color:var(--text3);margin-top:1rem">暂无专业就业数据</p>';
+  }
+  
+  // Sort by salary by default
+  const sorted = [...programs].sort((a, b) => (b.salary_avg || 0) - (a.salary_avg || 0));
+  
+  let html = '<div style="margin-top:1rem">';
+  html += '<div class="prov-filter-bar" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.8rem">';
+  html += '<button class="prov-kele-btn active" data-sort="salary" onclick="sortEmploymentRanking(this,\'salary\')" style="padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.08);color:var(--text1);cursor:pointer;font-size:0.85rem">💰 按薪资</button>';
+  html += '<button class="prov-kele-btn" data-sort="employment_rate" onclick="sortEmploymentRanking(this,\'employment_rate\')" style="padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:var(--text3);cursor:pointer;font-size:0.85rem">📊 按就业率</button>';
+  html += '<button class="prov-kele-btn" data-sort="prospects" onclick="sortEmploymentRanking(this,\'prospects\')" style="padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:var(--text3);cursor:pointer;font-size:0.85rem">🚀 按前景</button>';
+  html += '<span style="color:var(--text3);font-size:0.82rem;margin-left:auto">共' + sorted.length + '个专业</span>';
+  html += '</div>';
+  
+  html += '<div id="employmentRankingBody">' + renderEmploymentRankingRows(sorted) + '</div>';
+  html += '</div>';
+  return html;
+}
+
+function renderEmploymentRankingRows(programs) {
+  if (!programs.length) return '<p style="color:var(--text3)">暂无数据</p>';
+  let html = '<div style="overflow-x:auto"><table class="emp-table"><thead><tr><th>排名</th><th>专业</th><th>平均薪资</th><th>起薪</th><th>就业率</th><th>内卷指数</th><th>前景</th></tr></thead><tbody>';
+  programs.forEach((p, i) => {
+    const rankBadge = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+    html += '<tr>';
+    html += '<td style="text-align:center;font-weight:700">' + rankBadge + '</td>';
+    html += '<td><strong>' + esc(p.program_name) + '</strong></td>';
+    html += '<td style="color:var(--accent2);font-weight:600">' + formatSalary(p.salary_avg) + '</td>';
+    html += '<td>' + formatSalary(p.salary_entry) + '</td>';
+    html += '<td style="color:' + (p.employment_rate >= 97 ? 'var(--green)' : 'var(--text)') + '">' + p.employment_rate + '%</td>';
+    html += '<td style="color:' + (p.pressure >= 75 ? 'var(--red)' : p.pressure >= 60 ? 'var(--yellow)' : 'var(--green)') + '">' + p.pressure + '/100</td>';
+    html += '<td style="color:' + (p.prospects >= 85 ? 'var(--green)' : 'var(--text)') + '">' + p.prospects + '/100</td>';
+    html += '</tr>';
+    if (p.description) {
+      html += '<tr><td colspan="7" style="padding:0.3rem 1rem;font-size:0.82rem;color:var(--text3);background:rgba(255,255,255,0.02)">' + esc(p.description) + '</td></tr>';
+    }
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function sortEmploymentRanking(btn, sortBy) {
+  document.querySelectorAll('[data-sort]').forEach(b => {
+    b.classList.remove('active');
+    b.style.background = 'rgba(255,255,255,0.04)';
+    b.style.color = 'var(--text3)';
+  });
+  btn.classList.add('active');
+  btn.style.background = 'rgba(255,255,255,0.08)';
+  btn.style.color = 'var(--text1)';
+  
+  if (!_employmentRankingUniId) return;
+  const body = document.getElementById('employmentRankingBody');
+  if (!body) return;
+  
+  // Get programs from the page data
+  const tables = document.querySelectorAll('.emp-table');
+  // Re-fetch data and sort
+  apiGet('/employment?uni_id=' + _employmentRankingUniId + '&sort=' + sortBy + '&order=desc&limit=50').then(data => {
+    body.innerHTML = renderEmploymentRankingRows(data);
+  }).catch(() => toast('排序失败'));
 }
 
 function renderProvinceScores(u) {
@@ -614,12 +703,40 @@ async function loadProvinceMajorScores(uniId, containerId, preloadedBaseScores) 
 function toggleProvMajors(rowId) {
   const row = document.getElementById(rowId);
   if (!row) return;
-  const isHidden = row.style.display === 'none';
-  row.style.display = isHidden ? 'table-row' : 'none';
-  const prevRow = row.previousElementSibling;
-  if (prevRow) {
-    const arrow = prevRow.querySelector('td');
-    if (arrow) arrow.textContent = isHidden ? '▪' : '▪';
+  const isHidden = row.style.display === 'none' || !row.classList.contains('expanded');
+  
+  // Close all other expanded rows first (accordion behavior)
+  document.querySelectorAll('.prov-detail-row.expanded').forEach(r => {
+    if (r.id !== rowId) {
+      r.style.display = 'none';
+      r.classList.remove('expanded');
+      const prevRow = r.previousElementSibling;
+      if (prevRow) {
+        prevRow.classList.remove('prov-expanded');
+        const arrow = prevRow.querySelector('td:first-child');
+        if (arrow) arrow.textContent = '\u25aa';
+      }
+    }
+  });
+  
+  if (isHidden) {
+    row.style.display = 'table-row';
+    row.classList.add('expanded');
+    const prevRow = row.previousElementSibling;
+    if (prevRow) {
+      prevRow.classList.add('prov-expanded');
+      const arrow = prevRow.querySelector('td:first-child');
+      if (arrow) arrow.textContent = '\u25bc';
+    }
+  } else {
+    row.style.display = 'none';
+    row.classList.remove('expanded');
+    const prevRow = row.previousElementSibling;
+    if (prevRow) {
+      prevRow.classList.remove('prov-expanded');
+      const arrow = prevRow.querySelector('td:first-child');
+      if (arrow) arrow.textContent = '\u25aa';
+    }
   }
 }
 
