@@ -1669,16 +1669,11 @@ if os.path.exists(_fac_path):
 
 @app.get("/api/majors")
 def list_majors():
-    conn = get_db()
-    rows = conn.execute("SELECT DISTINCT program_name FROM employment ORDER BY program_name").fetchall()
-    conn.close()
-    names = [r["program_name"] for r in rows if r["program_name"]]
-    # Enrich with detail from majors.json if available
+    #优先从majors.json读取全部专业（30个），再补充就业表中独有的
     result = []
-    for n in names:
-        d = _MAJORS_DETAIL.get(n, {})
+    for name, d in sorted(_MAJORS_DETAIL.items()):
         result.append({
-            "name": n,
+            "name": name,
             "category": d.get("category", ""),
             "tags": d.get("tags", []),
             "avg_salary_range": d.get("avg_salary_range", ""),
@@ -1687,6 +1682,16 @@ def list_majors():
             "competition_score": d.get("competition_score", 0),
             "prospects_score": d.get("prospects_score", 0),
         })
+    # 补充就业表中有但majors.json没有的专业
+    conn = get_db()
+    rows = conn.execute("SELECT DISTINCT program_name FROM employment ORDER BY program_name").fetchall()
+    conn.close()
+    existing = {item["name"] for item in result}
+    for r in rows:
+        n = r["program_name"]
+        if n and n not in existing:
+            result.append({"name": n, "category": "", "tags": [], "avg_salary_range": "", "employment_rate_range": "", "difficulty_score": 0, "competition_score": 0, "prospects_score": 0})
+            existing.add(n)
     return result
 
 @app.get("/api/majors/{major_name}")
