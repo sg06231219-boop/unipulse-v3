@@ -2351,6 +2351,14 @@ static_dir = os.path.join(_BASE_DIR, "static")
 print(f"[UniPulse] BASE_DIR={_BASE_DIR} static_dir={static_dir}")
 if not os.path.isdir(static_dir):
     os.makedirs(static_dir, exist_ok=True)
+@app.get("/robots.txt")
+async def robots():
+    return FileResponse("static/robots.txt", media_type="text/plain")
+
+@app.get("/sitemap.xml")
+async def sitemap():
+    return FileResponse("static/sitemap.xml", media_type="application/xml")
+
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 @app.get("/")
