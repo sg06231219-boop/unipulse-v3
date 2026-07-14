@@ -1,39 +1,47 @@
-name: Deploy
+name: Debug Render
 on:
   workflow_dispatch:
 jobs:
-  deploy:
+  debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Render deploy
+      - name: Get service details
         env:
           RENDER_KEY: rnd_YRp3lawJR0ofKVFmbNqcSYuPvu5N
         run: |
-          echo "=== POST /deploys with clearCache ==="
-          curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "https://api.render.com/v1/services/srv-d8j9j88jo6nc73e449ig/deploys" \
-            -H "Authorization: Bearer $RENDER_KEY" \
-            -H "Accept: application/json" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache":true}'
+          SERVICE_ID="srv-d8j9j88jo6nc73e449ig"
           
-          echo ""
-          echo "=== Waiting 7 min ==="
-          sleep 420
-          
-          echo "=== Deploy status ==="
-          curl -s "https://api.render.com/v1/services/srv-d8j9j88jo6nc73e449ig/deploys?limit=3" \
+          echo "=== Full service info ==="
+          curl -s "https://api.render.com/v1/services/$SERVICE_ID" \
             -H "Authorization: Bearer $RENDER_KEY" | python3 -c "
           import sys,json
-          for d in json.load(sys.stdin):
-              dep=d['deploy']
-              print(f'commit={dep[\"commit\"][\"id\"][:8]} status={dep[\"status\"]} trigger={dep[\"trigger\"]} finished={dep.get(\"finishedAt\",\"running\")}')
+          d=json.load(sys.stdin)
+          s=d.get('service',d)
+          print(json.dumps(s, indent=2))
           "
           
-          echo "=== Verify ==="
-          curl -s -w " HTTP%{http_code}" "https://unipulse-v3.onrender.com/robots.txt" | head -5
           echo ""
-          curl -s "https://unipulse-v3.onrender.com/openapi.json" | python3 -c "
+          echo "=== Latest deploy full detail ==="
+          LATEST=$(curl -s "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=1" \
+            -H "Authorization: Bearer $RENDER_KEY" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['deploy']['id'])")
+          
+          curl -s "https://api.render.com/v1/services/$SERVICE_ID/deploys/$LATEST" \
+            -H "Authorization: Bearer $RENDER_KEY" | python3 -c "
           import sys,json
-          p=list(json.load(sys.stdin)['paths'].keys())
-          print(f'Routes:{len(p)} SEO:{[x for x in p if \"robot\" in x or \"sitemap\" in x]}')
+          d=json.load(sys.stdin)
+          print(json.dumps(d, indent=2))
           "
+          
+          echo ""
+          echo "=== Try POST deploy without body ==="
+          curl -s -w "\nHTTP:%{http_code}" -X POST "https://api.render.com/v1/services/$SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_KEY" \
+            -H "Accept: application/json"
+          
+          echo ""
+          echo "=== Try POST with imgCommitId ==="
+          HEAD_SHA=$(curl -s "https://api.github.com/repos/sg06231219-boop/unipulse-v3/commits/main" | python3 -c "import sys,json;print(json.load(sys.stdin)['sha'])")
+          curl -s -w "\nHTTP:%{http_code}" -X POST "https://api.render.com/v1/services/$SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"imgCommitId\":\"$HEAD_SHA\"}"
