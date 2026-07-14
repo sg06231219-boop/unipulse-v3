@@ -9,44 +9,55 @@ jobs:
         env:
           RENDER_KEY: rnd_YRp3lawJR0ofKVFmbNqcSYuPvu5N
         run: |
-          echo "=== Triggering clean deploy (clearCache=true) ==="
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.render.com/v1/services/srv-d8j9j88jo6nc73e449ig/deploys" \
+          SERVICE_ID="srv-d8j9j88jo6nc73e449ig"
+          
+          echo "=== Method 1: POST with clearCache ==="
+          curl -sv -X POST "https://api.render.com/v1/services/$SERVICE_ID/deploys" \
             -H "Authorization: Bearer $RENDER_KEY" \
             -H "Content-Type: application/json" \
-            -d '{"clearCache": true}')
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | head -n -1)
-          echo "HTTP $HTTP_CODE"
-          echo "Response: $BODY"
+            -H "Accept: application/json" \
+            -d '{"clearCache": true}' 2>&1 | tail -20
           
           echo ""
-          echo "=== Waiting 5 min for build ==="
-          sleep 300
+          echo "=== Method 2: POST empty body ==="
+          curl -s -w "\nHTTP %{http_code}" -X POST "https://api.render.com/v1/services/$SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d '{}' 2>&1
           
-          echo "=== Checking deploy status ==="
-          curl -s "https://api.render.com/v1/services/srv-d8j9j88jo6nc73e449ig/deploys?limit=3" \
+          echo ""
+          echo "=== Method 3: POST with commitId ==="
+          # Get current HEAD commit
+          HEAD_COMMIT=$(curl -s "https://api.github.com/repos/sg06231219-boop/unipulse-v3/commits/main" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
+          echo "HEAD commit: $HEAD_COMMIT"
+          curl -s -w "\nHTTP %{http_code}" -X POST "https://api.render.com/v1/services/$SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d "{\"commitId\": \"$HEAD_COMMIT\"}" 2>&1
+          
+          echo ""
+          echo "=== Wait 8 min for build ==="
+          sleep 480
+          
+          echo "=== Final status ==="
+          curl -s "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=5" \
             -H "Authorization: Bearer $RENDER_KEY" | python3 -c "
           import sys,json
           for d in json.load(sys.stdin):
               dep=d['deploy']
-              print(f'commit={dep[\"commit\"][\"id\"][:8]} status={dep[\"status\"]} trigger={dep[\"trigger\"]} finished={dep.get(\"finishedAt\",\"N/A\")}')
+              print(f'commit={dep[\"commit\"][\"id\"][:8]} status={dep[\"status\"]} trigger={dep[\"trigger\"]} finished={dep.get(\"finishedAt\",\"running...\")}')
           "
           
           echo ""
-          echo "=== Verify SEO ==="
+          echo "=== Verify ==="
           curl -s -w "\nHTTP %{http_code}" "https://unipulse-v3.onrender.com/robots.txt"
           echo ""
-          curl -s -w "\nHTTP %{http_code}" "https://unipulse-v3.onrender.com/openapi.json" | python3 -c "
+          curl -s "https://unipulse-v3.onrender.com/openapi.json" | python3 -c "
           import sys,json
-          data=sys.stdin.read()
-          http_line=data.strip().split('\n')[-1]
-          body='\n'.join(data.strip().split('\n')[:-1])
-          print(http_line)
-          try:
-              paths=list(json.loads(body)['paths'].keys())
-              print(f'Total routes: {len(paths)}')
-              seo=[p for p in paths if 'robot' in p or 'sitemap' in p]
-              print(f'SEO routes: {seo}')
-          except:
-              print('Parse error')
+          paths=list(json.load(sys.stdin)['paths'].keys())
+          print(f'Total routes: {len(paths)}')
+          seo=[p for p in paths if 'robot' in p or 'sitemap' in p]
+          print(f'SEO routes: {seo}')
           "
