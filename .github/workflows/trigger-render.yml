@@ -1,4 +1,4 @@
-name: Status
+name: Final Check
 on:
   workflow_dispatch:
 jobs:
@@ -6,18 +6,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          curl -s "https://api.render.com/v1/services/srv-d8j9j88jo6nc73e449ig/deploys?limit=5" \
+          curl -s "https://api.render.com/v1/services/srv-d8j9j88jo6nc73e449ig/deploys?limit=3" \
             -H "Authorization: Bearer rnd_YRp3lawJR0ofKVFmbNqcSYuPvu5N" | python3 -c "
           import sys,json
           for d in json.load(sys.stdin):
               dep=d['deploy']
-              print(f'{dep[\"commit\"][\"id\"][:8]} {dep[\"status\"]} {dep[\"trigger\"]} {dep.get(\"finishedAt\",\"running\")}')
+              print(f'{dep[\"commit\"][\"id\"][:8]} status={dep[\"status\"]} trigger={dep[\"trigger\"]} finished={dep.get(\"finishedAt\",\"running\")}')
           "
           echo '---'
           curl -s -w " HTTP%{http_code}" "https://unipulse-v3.onrender.com/robots.txt" | tail -3
           echo ""
-          curl -s "https://unipulse-v3.onrender.com/openapi.json" | python3 -c "
-          import sys,json
-          p=list(json.load(sys.stdin)['paths'].keys())
-          print(f'Routes:{len(p)} SEO:{[x for x in p if \"robot\" in x or \"sitemap\" in x]}')
-          " 2>/dev/null || echo "OpenAPI: ERR"
+          curl -s -w " HTTP%{http_code}" "https://unipulse-v3.onrender.com/sitemap.xml" | tail -3
+          echo ""
+          curl -s "https://unipulse-v3.onrender.com/api/health" | head -c 200
+          echo ""
+          curl -s "https://unipulse-v3.onrender.com/openapi.json" | python3 -c "import sys,json;p=list(json.load(sys.stdin)['paths'].keys());print(f'Routes:{len(p)} SEO:{[x for x in p if \"robot\" in x or \"sitemap\" in x]}')" 2>/dev/null || echo "OpenAPI: ERR"
