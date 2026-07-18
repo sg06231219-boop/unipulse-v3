@@ -415,8 +415,11 @@ def init_db():
                  u.get("name_en",""),u.get("province",u.get("cn","")),u.get("city","")))
 
         for p in PROGRAMS:
+            # seed_slim.json stores programs as strings; majors.json stores dicts
+            if isinstance(p, str):
+                p = {"name": p, "icon": "", "univs": 0}
             c.execute("INSERT OR REPLACE INTO programs (name,icon,univs) VALUES (?,?,?)",
-                (p["name"],p["icon"],json.dumps(p.get("univs",0),ensure_ascii=False)))
+                (p.get("name",""),p.get("icon",""),json.dumps(p.get("univs",0),ensure_ascii=False)))
 
         for e in UNI_PROGRAMS:
             c.execute("""INSERT INTO employment (uni_id,program_name,salary_avg,salary_entry,employment_rate,pressure,prospects,description)
